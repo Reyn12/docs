@@ -1,0 +1,22 @@
+---
+title: "Firebase"
+description: "Description of your new file."
+---
+
+Proyek ini menggunakan Firebase untuk autentikasi dan layanan lainnya.
+
+## Setup
+1. Buat proyek di [Firebase Console](https://console.firebase.google.com).
+2. Tambahkan aplikasi Flutter dan unduh `google-services.json` (Android) atau `GoogleService-Info.plist` (iOS).
+3. Tempatkan file di direktori yang sesuai.
+4. Konfigurasi di `firebase_options.dart`.
+
+## Contoh Konfigurasi
+```dart
+// firebase_options.dart
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+
+void main() async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+}

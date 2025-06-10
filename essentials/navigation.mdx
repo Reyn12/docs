@@ -1,0 +1,25 @@
+---
+title: "Navigation"
+description: "Description of your new file."
+---
+
+Navigasi diatur menggunakan [misalnya `go_router` atau `Navigator`].
+
+## Alur Navigasi
+- Dari `SplashScreen` ke `Auth` (jika belum login).
+- Dari `Auth` ke `Beranda` (setelah login).
+
+## Contoh Kode
+```dart
+// go_router setup
+final GoRouter _router = GoRouter(
+  routes: [
+    GoRoute(path: '/login', builder: (context, state) => LoginScreen()),
+    GoRoute(path: '/home', builder: (context, state) => BerandaScreen()),
+  ],
+);
+```
+Routing Fitur
+/auth: Halaman login/register.
+/beranda: Halaman utama.
+undefined

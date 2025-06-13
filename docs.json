@@ -56,9 +56,7 @@
           {
             "group": "Services",
             "pages": [
-              "api-reference/introduction",
-              "api-reference/auth-service",
-              "api-reference/general-services"
+              "api-reference/endpoint"
             ]
           }
         ]

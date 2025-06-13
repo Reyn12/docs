@@ -1,4 +1,222 @@
 ---
-title: "Troubleshoot"
-description: "Description of your new file."
+title: "🔧 Troubleshooting"
+description: "Dokumentasi ini berisi solusi untuk masalah umum yang mungkin dihadapi selama pengembangan atau penggunaan aplikasi Maqdis Connect."
 ---
+
+
+## 🚀 Masalah Build & Run
+
+### 1. Error: `Target of URI doesn't exist`
+
+**Gejala:**
+
+```
+Error: Couldn't resolve the package 'package_name' in '...'
+```
+
+**Solusi:**
+
+```bash
+flutter clean
+flutter pub get
+```
+
+### 2. Error: `Uses or overrides a deprecated API`
+
+**Solusi:**
+
+- Perbarui dependensi di `pubspec.yaml` ke versi terbaru
+- Atau tambahkan ini di `android/app/build.gradle`:
+
+  ```gradle
+  android {
+      lintOptions {
+          checkReleaseBuilds false
+      }
+  }
+  ```
+
+### 3. Aplikasi Crash Saat Dibuka
+
+**Penyebab Umum:**
+
+- Controller belum diinisialisasi dengan benar
+- Error di `initState` atau `onInit`
+
+**Solusi:**
+
+1. Pastikan controller sudah di-bind dengan benar
+2. Gunakan `Get.put()` di `onInit`:
+
+   ```dart
+   @override
+   void onInit() {
+     super.onInit();
+     Get.put(YourController());
+   }
+   ```
+
+---
+
+## 🔄 Masalah State Management
+
+### 1. State Tidak Terupdate
+
+**Penyebab:**
+
+- Lupa memanggil `update()` atau `.value`
+- Obx/GetBuilder tidak membungkus widget yang benar
+
+**Solusi:**
+
+```dart
+// Controller
+class ExampleController extends GetxController {
+  var count = 0.obs;
+  
+  void increment() {
+    count.value++; // Jangan lupa .value untuk .obs
+    // Atau
+    // update(); // Jika menggunakan GetBuilder
+  }
+}
+
+// View
+Obx(() => Text('${controller.count.value}'))
+// Atau
+GetBuilder<Controller>(
+  builder: (controller) => Text('${controller.count}'),
+)
+```
+
+### 2. Error: `GetX: Cannot find an instance of "Controller"`
+
+**Solusi:**
+Pastikan controller sudah di-inisialisasi sebelum digunakan:
+
+```dart
+// Di Binding
+void dependencies() {
+  Get.lazyPut(() => YourController());
+}
+
+// Atau di view
+final controller = Get.put(YourController());
+```
+
+---
+
+## 🌐 Masalah Jaringan & API
+
+### 1. Error: `SocketException: Connection failed`
+
+**Solusi:**
+
+- Periksa koneksi internet
+- Pastikan base URL API benar
+- Cek apakah server API aktif
+
+### 2. Error: `401 Unauthorized`
+
+**Solusi:**
+
+- Pastikan token masih valid
+- Tambahkan header authorization:
+
+  ```dart
+  final response = await http.get(
+    Uri.parse('$baseUrl/api/endpoint'),
+    headers: {
+      'Authorization': 'Bearer $token',
+    },
+  );
+  ```
+
+### 3. Error: `FormatException: Unexpected character`
+
+**Solusi:**
+
+- Pastikan response dari API valid JSON
+- Gunakan try-catch untuk handle error parsing:
+
+  ```dart
+  try {
+    final data = jsonDecode(response.body);
+  } catch (e) {
+    print('Error parsing JSON: $e');
+  }
+  ```
+
+---
+
+## 📱 Masalah Spesifik Perangkat
+
+### 1. Android: `Failed to install the following Android SDK packages`
+
+**Solusi:**
+
+1. Buka Android Studio
+2. Buka SDK Manager
+3. Install Android SDK Command-line Tools
+4. Set path di `~/.zshrc` atau `~/.bash_profile`:
+
+   ```bash
+   export ANDROID_HOME=$HOME/Library/Android/sdk
+   export PATH=$PATH:$ANDROID_HOME/emulator
+   export PATH=$PATH:$ANDROID_HOME/platform-tools
+   export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
+   ```
+
+### 2. iOS: `CocoaPods not installed`
+
+**Solusi:**
+
+```bash
+sudo gem install cocoapods
+cd ios
+pod install
+```
+
+---
+
+## 🔍 Debugging Tips
+
+1. **Print Debug**
+
+   ```dart
+   print('Nilai variable: $variable');
+   // Atau
+   debugPrint('Panjang list: ${list.length}');
+   ```
+2. **Check Widget Tree**
+
+   ```dart
+   import 'package:flutter/rendering.dart';
+   
+   void main() {
+     debugPaintSizeEnabled = true; // Tambahkan di main()
+     runApp(MyApp());
+   }
+   ```
+3. **Check State**
+
+   ```dart
+   // Di dalam build method
+   print('Build dipanggil dengan state: ${controller.state}');
+   ```
+
+---
+
+## ❓ Masih Bermasalah?
+
+1. Cek [GitHub Issues](https://github.com/your-repo/issues)
+2. Tanyakan di grup developer
+3. Buat issue baru dengan menyertakan:
+   - Langkah reproduksi
+   - Pesan error lengkap
+   - Screenshot (jika ada)
+   - Versi Flutter (`flutter doctor -v`)
+
+---
+
+Terakhir diperbarui: 13 Juni 2025

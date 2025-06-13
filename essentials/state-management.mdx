@@ -1,4 +1,196 @@
 ---
-title: "State Management"
-description: "Description of your new file."
+title: "🧠 State Management (Getx)"
+description: "Dokumentasi manajemen state dengan GetX di Maqdis Connect"
+---
+
+Aplikasi Maqdis Connect menggunakan **GetX** untuk manajemen state. GetX dipilih karena ringan, mudah digunakan, dan menyediakan solusi lengkap untuk state management, dependency injection, dan route management.
+
+---
+
+## 🏗️ Struktur Dasar
+
+### 1. **Controller**
+
+- Tempat menyimpan state dan business logic
+- Extend `GetxController`
+- Gunakan `.obs` untuk membuat observable variables
+
+```dart
+class CounterController extends GetxController {
+  final count = 0.obs;
+  
+  void increment() => count.value++;
+}
+```
+
+### 2. **Binding**
+
+- Untuk inisialisasi controller
+- Extend `Bindings`
+- Override `dependencies()`
+
+```dart
+class HomeBinding implements Bindings {
+  @override
+  void dependencies() {
+    Get.put(HomeController());
+  }
+}
+```
+
+### 3. **View**
+
+- Widget UI yang mengobservasi state
+- Gunakan `GetBuilder`, `Obx`, atau `GetX`
+
+```dart
+// Menggunakan Obx
+Obx(() => Text('${controller.count.value}'))
+
+// Atau GetBuilder
+GetBuilder<CounterController>(
+  builder: (controller) => Text('${controller.count}'),
+)
+```
+
+---
+
+## 🔄 Cara Menggunakan
+
+### 1. Inisialisasi Controller
+
+**Cara 1:** Menggunakan Binding (Direkomendasikan)
+
+```dart
+// Di routes.dart
+GetPage(
+  name: '/home',
+  page: () => HomePage(),
+  binding: HomeBinding(),
+);
+```
+
+**Cara 2:** Manual dengan Get.put()
+
+```dart
+// Di initState atau build method
+final controller = Get.put(HomeController());
+```
+
+### 2. Mengakses Controller
+
+```dart
+// Di dalam widget
+final controller = Get.find<HomeController>();
+// Atau
+final controller = Get.put(HomeController());
+```
+
+### 3. Update State
+
+```dart
+// Di dalam controller
+count.value++;  // Untuk .obs variables
+update();       // Untuk GetBuilder
+```
+
+---
+
+## 🎯 Contoh Implementasi
+
+### Controller
+
+```dart
+class UserController extends GetxController {
+  final user = User().obs;
+  final isLoading = false.obs;
+
+  Future<void> fetchUser() async {
+    try {
+      isLoading.value = true;
+      user.value = await UserRepository.getUser();
+    } finally {
+      isLoading.value = false;
+    }
+  }
+}
+```
+
+### View
+
+```dart
+class ProfilePage extends StatelessWidget {
+  final UserController userController = Get.put(UserController());
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Obx(() {
+        if (userController.isLoading.value) {
+          return Center(child: CircularProgressIndicator());
+        }
+        return Text('Welcome, ${userController.user.value.name}');
+      }),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => userController.fetchUser(),
+        child: Icon(Icons.refresh),
+      ),
+    );
+  }
+}
+```
+
+---
+
+## 💡 Tips & Best Practices
+
+1. **Gunakan .obs untuk simple state**
+
+   ```dart
+   final name = 'Maqdis'.obs;
+   ```
+2. **Gunakan GetBuilder untuk complex state**
+
+   ```dart
+   GetBuilder<Controller>(
+     init: Controller(),
+     builder: (controller) => Text(controller.data),
+   )
+   ```
+3. **Gunakan GetView untuk akses controller lebih mudah**
+
+   ```dart
+   class HomePage extends GetView<HomeController> {
+     @override
+     Widget build(BuildContext context) {
+       return Text(controller.title);
+     }
+   }
+   ```
+4. **Gunakan Worker untuk reaksi terhadap perubahan state**
+
+   ```dart
+   ever(count, (_) => print('count changed'));
+   ```
+5. **Hindari memanggil Get.put() berulang kali**
+
+   ```dart
+   // Salah
+   Get.put(Controller());
+   Get.put(Controller());
+   
+   // Benar
+   Get.put(Controller());
+   // atau
+   Get.find<Controller>();
+   ```
+
+---
+
+## 📚 Referensi
+
+- [GetX Documentation](https://pub.dev/packages/get)
+- [GetX Pattern Documentation](https://github.com/kauemurakami/getx_pattern)
+- [GetX Cheat Sheet](https://medium.com/flutter-community/the-flutter-getx-ecosystem-state-management-881c7235511d)
+
 ---

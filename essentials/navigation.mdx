@@ -1,25 +1,110 @@
 ---
-title: "Navigation"
-description: "Description of your new file."
+title: "Navigasi"
+description: "Dokumentasi sistem navigasi Maqdis Connect"
 ---
 
-Navigasi diatur menggunakan [misalnya `go_router` atau `Navigator`].
+# Navigasi pada Maqdis Connect
 
-## Alur Navigasi
-- Dari `SplashScreen` ke `Auth` (jika belum login).
-- Dari `Auth` ke `Beranda` (setelah login).
+Aplikasi Maqdis Connect menggunakan paket **GetX** untuk mengelola sistem navigasi dan routing antar halaman. Dengan GetX, manajemen route menjadi lebih efisien dan mudah dikembangkan, terutama untuk aplikasi modular.
 
-## Contoh Kode
-```dart
-// go_router setup
-final GoRouter _router = GoRouter(
-  routes: [
-    GoRoute(path: '/login', builder: (context, state) => LoginScreen()),
-    GoRoute(path: '/home', builder: (context, state) => BerandaScreen()),
-  ],
-);
+---
+
+## Struktur Routing
+
+Seluruh daftar route didefinisikan di file:
 ```
-Routing Fitur
-/auth: Halaman login/register.
-/beranda: Halaman utama.
-undefined
+lib/core/services/routers.dart
+```
+
+Setiap route menggunakan objek `GetPage`, yang mendefinisikan nama route, widget halaman, dan (jika ada) binding controller-nya. Contoh implementasi route pada aplikasi ini:
+
+```dart
+GetPage(
+  name: '/splashScreen',
+  page: () => SplashScreen(),
+  binding: SplashScreenBinding(),
+),
+GetPage(
+  name: '/praktekScreen',
+  page: () => const PraktekScreenNew(),
+  binding: PraktekScreenBinding(),
+),
+GetPage(
+  name: '/manasikScreen',
+  page: () => ManasikScreen(),
+  binding: ManasikScreenBinding(),
+),
+GetPage(
+  name: '/waitingScreen',
+  page: () => const GroupWaitingScreen(),
+),
+GetPage(
+  name: '/audioRoomScreen',
+  page: () => const AudioRoomScreen(),
+  binding: AudioRoomBinding(),
+),
+GetPage(
+  name: '/resetPasswordSuccess',
+  page: () => const ResetPasswordSuccessScreen(),
+),
+GetPage(
+  name: '/deleteAccountSuccess',
+  page: () => const DeleteAccountSuccessScreen(),
+),
+```
+
+---
+
+## Navigasi Antar Halaman
+
+Untuk melakukan navigasi antar halaman, dapat menggunakan beberapa method dari GetX, seperti:
+
+- **Menuju halaman baru:**
+  ```dart
+  Get.to(NamaPage());
+  ```
+- **Kembali ke halaman sebelumnya:**
+  ```dart
+  Get.back();
+  ```
+- **Mengganti halaman dan menghapus seluruh riwayat:**
+  ```dart
+  Get.offAll(NamaPage());
+  ```
+- **Navigasi menggunakan named route:**
+  ```dart
+  Get.toNamed('/splashScreen');
+  ```
+
+---
+
+## Binding Controller
+
+Pada beberapa halaman, binding digunakan untuk menginisialisasi controller secara otomatis saat halaman diakses. Contoh:
+```dart
+GetPage(
+  name: '/manasikScreen',
+  page: () => ManasikScreen(),
+  binding: ManasikScreenBinding(),
+),
+```
+Binding memastikan controller yang dibutuhkan halaman sudah siap sebelum halaman dirender.
+
+---
+
+## Tips & Best Practice
+
+- Gunakan **named route** untuk navigasi yang lebih terstruktur dan mudah di-maintain.
+- Selalu definisikan binding jika halaman membutuhkan controller khusus.
+- Simpan seluruh daftar route dalam satu file agar mudah dikelola dan didokumentasikan.
+
+---
+
+## Referensi
+
+- [GetX Navigation Documentation](https://pub.dev/packages/get#navigation)
+- [GetX Official Documentation](https://pub.dev/packages/get)
+
+---
+
+Jika ada perubahan pada struktur route, pastikan untuk memperbarui dokumentasi ini agar tetap relevan.

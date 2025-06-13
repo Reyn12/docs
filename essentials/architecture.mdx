@@ -1,16 +1,59 @@
 ---
-title: "Architecture Folder"
-description: "Description of your new file."
+title: "Arsitektur Project"
+description: "Struktur dan pola arsitektur aplikasi Maqdis Connect"
 ---
 
-Proyek ini menggunakan pendekatan modular dengan struktur berikut:
+# 🏗️ Arsitektur Maqdis Connect
 
-## Struktur Folder
-Tempel Foto Disini
+Aplikasi ini pakai **GetX Pattern** buat struktur kode dan manajemen state, bukan clean architecture.\
+GetX dipilih karena simple, efisien, dan cocok buat project Flutter yang butuh navigasi, state, sama dependency injection yang gampang.
 
+## 📁 Struktur Folder Utama
 
-## State Management
-Menggunakan [State Management yang dipakai, misalnya Provider atau GetX].
+```plaintext
+lib/
+│
+├── core/                # Service umum (API, endpoint, helper, dsb)
+├── modules/             # Fitur utama (per modul/page)
+│   └── [fitur]/         # Contoh: auth, group, doa, profile, dsb
+│       ├── controllers/ # GetX Controller untuk fitur itu
+│       ├── views/       # Widget/page tampilan
+│       └── bindings/    # Binding controller ke page
+├── routes/              # File route GetX (daftar semua halaman)
+├── widgets/             # Widget custom reusable
+└── main.dart            # Entry point aplikasi
+```
 
-## Diagram Arsitektur
-[Tambahkan diagram sederhana pakai Mermaid jika memungkinkan]
+## **🔄 Alur Data & Navigasi**
+
+- **Controller**: Semua logic & state ada di GetX Controller (per fitur).
+- **View**: Widget/page ambil data dari controller pakai GetBuilder/Obx.
+- **Binding**: Tiap page di-bind ke controllernya masing-masing lewat GetX Binding.
+- **Navigasi**: Pakai [Get.to](http://Get.to)(), Get.offAll(), dsb (lihat [**<u>navigation.mdx</u>**](vscode-file://vscode-app/essentials/navigation)).
+
+---
+
+## **🧩 Kenapa Pakai GetX Pattern?**
+
+- **Simple**: Struktur folder jelas per fitur.
+- **Cepat**: State management, dependency injection, sama navigasi jadi satu package.
+- **Scalable**: Mudah nambah fitur baru, tinggal tambah modul baru di modules/
+- **Community Support**: Banyak contoh & solusi di internet.
+
+## **📝 Contoh Struktur Modul**
+
+```
+modules/
+  group/
+    controllers/
+      group_controller.dart
+    views/
+      group_page.dart
+    bindings/
+      group_binding.dart
+```
+
+## **📖 Referensi**
+
+- [**<u>GetX Documentation</u>**](https://pub.dev/packages/get)
+- [**<u>GetX Pattern Example</u>**](https://resocoder.com/2021/04/10/getx-in-flutter-getx-architecture-tutorial/)

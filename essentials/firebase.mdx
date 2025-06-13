@@ -1,22 +1,66 @@
 ---
-title: "Firebase"
-description: "Description of your new file."
+title: "Firebase Setup"
+description: "Panduan setup Firebase di Maqdis Connect"
 ---
 
-Proyek ini menggunakan Firebase untuk autentikasi dan layanan lainnya.
+# 🔥 Firebase di Maqdis Connect
 
-## Setup
-1. Buat proyek di [Firebase Console](https://console.firebase.google.com).
-2. Tambahkan aplikasi Flutter dan unduh `google-services.json` (Android) atau `GoogleService-Info.plist` (iOS).
-3. Tempatkan file di direktori yang sesuai.
-4. Konfigurasi di `firebase_options.dart`.
+> **Catatan:**\
+> Fitur Firebase masih **coming soon**. Beberapa setup awal udah ada, tapi fitur kayak Auth, Firestore, dll belum aktif penuh.
 
-## Contoh Konfigurasi
-```dart
-// firebase_options.dart
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
+---
 
-void main() async {
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-}
+## 🚧 Status Integrasi
+
+- **firebase_core** udah di-setup di pubspec.yaml
+- Fitur Firebase (Auth, Firestore, Storage, dll) BELUM diimplementasi penuh
+- Belum semua halaman/app pakai Firebase
+
+---
+
+## 🛠️ Setup Awal (Yang Udah Ada)
+
+1. **Install package:**\
+   Di pubspec.yaml udah ada:
+
+   ```yaml
+   firebase_core: ^3.13.0
+   ```
+
+
+2. **File config:**
+
+- Android: (cek di folder android/app)
+
+  ```
+  google-services.json
+  ```
+- iOS: (belum di-setup)
+
+  ```
+  GoogleService-Info.plist
+  ```
+
+2. **Init Firebase:**
+
+   **main.dart** 
+
+   ```
+   await Firebase.initializeApp();
+   ```
+
+---
+
+## **📋 Rencana Pemakaian Firebase**
+
+- **Auth:** Login/daftar user pakai email/Google
+- **Firestore:** Simpan data user, grup, dsb
+- **Storage:** Upload foto profil, dokumen perjalanan
+- **Push Notification:** Notifikasi jadwal, info grup, dsb
+
+## **📋 Rencana Pemakaian Firebase**
+
+- **Auth:** Login/daftar user pakai email/Google
+- **Firestore:** Simpan data user, grup, dsb
+- **Storage:** Upload foto profil, dokumen perjalanan
+- **Push Notification:** Notifikasi jadwal, info grup, dsb

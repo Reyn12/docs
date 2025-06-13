@@ -1,5 +1,142 @@
 ---
-title: 'New file'
-description: 'Description of your new file.'
+title: "API Endpoints"
+description: "Daftar endpoint yang dipakai di Maqdis Connect"
 ---
 
+# 🌐 API Endpoints Maqdis Connect
+
+Semua endpoint di bawah ini diakses lewat base URL:
+
+## Base URL (Environment)
+
+- **Staging/Server Real:**
+
+```
+  https://maqdis-travel.com/
+```
+
+- **Production (GCP):**
+
+```
+https://maqdis-api-gcp-781714147020.asia-southeast2.run.app/
+```
+
+- **Dev Tunnel (contoh):**  
+  [https://jxjlm6b5-5000.asse.devtunnels.ms/](https://jxjlm6b5-5000.asse.devtunnels.ms/)  
+  [https://hnd1sw9p-5000.asse.devtunnels.ms/](https://hnd1sw9p-5000.asse.devtunnels.ms/)  
+  [https://dwltv637-5000.asse.devtunnels.ms/](https://dwltv637-5000.asse.devtunnels.ms/)
+
+- **Local:**  
+  [http://localhost:5001/](http://localhost:5001/)
+
+## **✨ List Endpoint**
+
+### **🔑 Auth**
+
+- **Register:** 
+
+  ```
+  POST /api/auth/register
+  ```
+- **Login:** 
+
+  ```
+  POST /api/auth/login
+  ```
+- **Login Google:** 
+
+  ```
+  POST /api/auth/google
+  ```
+- **Logout:** 
+
+  ```
+  POST /api/auth/logout
+  ```
+- **Get Profile:** 
+
+  ```
+  GET /api/profile/me
+  ```
+- **Check Token:** 
+
+  ```
+  GET /api/protected
+  ```
+
+### **👤 User**
+
+- **Update Profile:** 
+
+  ```
+  PUT /api/profile
+  ```
+- **Set Status Online:** 
+
+  ```
+  POST /api/setStatus/Online
+  ```
+- **Set Status Offline:** 
+
+  ```
+  POST /api/setStatus/Offline
+  ```
+
+### **👥 Group**
+
+- **Get Grup:** 
+
+  ```
+  GET /api/Group
+  ```
+- **Get List Grup:** 
+
+  ```
+  GET /api/Group
+  ```
+- **Cek User Grup:** 
+
+  ```
+  POST /api/Group/CekUserGrup
+  ```
+- **Live Progress:** 
+
+  ```
+  GET /api/Group/getCekLive
+  ```
+- **Get Peserta Group:** 
+
+  ```
+  GET /api/Group/peserta
+  ```
+- **Join Grup:** 
+
+  ```
+  POST /api/Group/join
+  ```
+- **Exit Grup:** 
+
+  ```
+  POST /api/Group/exit
+  ```
+
+### **🔊 Audio/Room**
+
+- **Refresh Room Token:** 
+
+  ```
+  POST /api/Audio/refreshToken
+  ```
+- **Generate Room Code:** 
+
+  ```
+  POST /api/Audio/generateRoomCode
+  ```
+
+### **🎧 Player/Doa**
+
+- **Get Doa by Perjalanan ID:** 
+
+  ```
+  GET /api/Doa/perjalanan/{id}
+  ```

@@ -41,7 +41,11 @@
             "pages": [
               "essentials/architecture",
               "essentials/firebase",
-              "essentials/navigation"
+              "essentials/navigation",
+              "essentials/state-management",
+              "essentials/troubleshooting"
+
+              
             ]
           }
         ]

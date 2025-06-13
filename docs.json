@@ -18,8 +18,7 @@
             "pages": [
               "index",
               "setup",
-              "development"
-            ]
+              "quickstart"            ]
           },
           {
             "group": "Features",

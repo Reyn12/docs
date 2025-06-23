@@ -1,4 +1,1015 @@
 ---
-title: "Doa"
-description: "Description of your new file."
+title: "Doa & Manasik Module"
+description: "Dokumentasi lengkap untuk fitur doa dan video manasik di aplikasi Maqdis Connect"
+icon: "video"
 ---
+
+# Doa & Manasik Module
+
+Modul doa dan manasik menyediakan koleksi video panduan manasik haji dan umroh dengan fitur streaming, offline caching, dan interface yang interaktif.
+
+## 🏗️ Arsitektur
+
+```
+lib/features/doa/
+├── controllers/          # Business logic dan state management
+│   └── video_doa_controller.dart
+├── services/            # API services dan data fetching
+│   └── video_doa_service.dart
+├── models/              # Data structures
+│   └── video_doa_model.dart
+├── views/               # UI screens
+│   └── manasik_screen.dart
+├── widgets/             # Reusable components
+│   └── detail_manasik.dart
+├── bindings/            # Dependency injection
+│   └── manasik_screen_binding.dart
+└── lazy_loader/         # Loading components
+    ├── doa_manasik_loader.dart
+    └── doa_manasik_detail_loader.dart
+```
+
+## 🎥 Fitur Utama
+
+<CardGroup cols={2}>
+  <Card title="Video Streaming" icon="play">
+    - High-quality video playback
+    - Multiple video formats support
+    - Fullscreen mode
+    - Custom video controls
+  </Card>
+  
+  <Card title="Offline Support" icon="download">
+    - Automatic video caching
+    - Offline mode detection
+    - Cached file management
+    - Background downloading
+  </Card>
+  
+  <Card title="Interactive UI" icon="sparkles">
+    - Staggered grid animations
+    - Gradient card designs
+    - HTML content rendering
+    - Responsive layouts
+  </Card>
+  
+  <Card title="Smart Loading" icon="gauge">
+    - Skeleton loading states
+    - Progressive content loading
+    - Error handling
+    - No-data states
+  </Card>
+</CardGroup>
+
+---
+
+## 📱 Controllers
+
+### VideoDoaController
+
+**Path:** `lib/features/doa/controllers/video_doa_controller.dart`
+
+Controller utama untuk mengelola video manasik dengan state management dan data fetching.
+
+#### Key Features:
+- **Video List Management**: Fetch dan cache daftar video dari API
+- **Video Detail**: Ambil detail video berdasarkan ID
+- **Loading States**: Handle loading states untuk UI feedback
+- **Error Handling**: Comprehensive error management
+
+#### Properties:
+
+<Accordion title="Reactive Variables">
+```dart
+var videoList = <VideoDoaModel>[].obs;        // List semua video
+var videoDetail = Rxn<VideoDoaModel>();        // Detail video yang dipilih
+var isLoading = false.obs;                     // Loading state
+var videoId = ''.obs;                          // ID video yang dipilih
+```
+</Accordion>
+
+#### Methods:
+
+<Accordion title="fetchVideos()">
+```dart
+Future<void> fetchVideos() async
+```
+
+**Fungsi:** Mengambil daftar semua video doa/manasik dari API
+
+**Flow:**
+1. Set `isLoading = true` untuk show loading state
+2. Call `VideoDoaService.getVideoDoa()` untuk fetch data
+3. Jika berhasil → Update `videoList` dengan `assignAll()`
+4. Handle error dengan proper logging
+5. Set `isLoading = false` setelah selesai
+
+**Error Handling:**
+- Try-catch untuk handle API failures
+- Print error untuk debugging
+- Graceful fallback tanpa crash
+- Loading state always reset di finally block
+</Accordion>
+
+<Accordion title="fetchVideoById()">
+```dart
+Future<void> fetchVideoById() async
+```
+
+**Fungsi:** Mengambil detail video berdasarkan `videoId` yang dipilih
+
+**Flow:**
+1. Set `isLoading = true` untuk UI feedback
+2. Call `VideoDoaService.getVideoById()` dengan `videoId.value`
+3. Jika berhasil → Set `videoDetail.value` dengan data
+4. Handle error dengan proper logging
+5. Reset loading state di finally
+
+**Usage Pattern:**
+```dart
+// Set video ID
+_videoDoaController.videoId.value = video.videoId;
+
+// Fetch detail
+await _videoDoaController.fetchVideoById();
+
+// Navigate to detail screen
+Get.to(() => DetailBacaanManasik());
+```
+</Accordion>
+
+#### Lifecycle:
+
+<Accordion title="Controller Lifecycle">
+```dart
+@override
+void onInit() {
+  super.onInit();
+  fetchVideos(); // Auto-fetch videos saat init
+}
+```
+
+**Initialization:**
+- Auto-fetch video list saat controller di-initialize
+- Ready-to-use setelah onInit() complete
+- Lazy loading pattern dengan Get.lazyPut()
+</Accordion>
+
+---
+
+## 🔧 Services
+
+### VideoDoaService
+
+**Path:** `lib/features/doa/services/video_doa_service.dart`
+
+Service layer untuk komunikasi dengan backend API dan data management.
+
+#### Configuration:
+
+<Accordion title="API Setup">
+```dart
+final Dio _dio = Dio(BaseOptions(baseUrl: '${Endpoints.baseUrl2}/api'));
+```
+
+**Base Configuration:**
+- **Base URL**: `${Endpoints.baseUrl2}/api`
+- **HTTP Client**: Dio untuk advanced HTTP features
+- **Timeout**: Default Dio timeout settings
+- **Headers**: Standard JSON headers
+</Accordion>
+
+#### Methods:
+
+<Accordion title="getVideoDoa()">
+```dart
+Future<List<VideoDoaModel>?> getVideoDoa() async
+```
+
+**Endpoint:** `GET /api/Videos`
+
+**Fungsi:** Fetch semua video doa/manasik dari database
+
+**Response Handling:**
+```dart
+if (response.statusCode == 200 && response.data != null) {
+  final data = response.data;
+  
+  // Validate response is List
+  if (data is List) {
+    return data.map((video) => VideoDoaModel.fromJson(video)).toList();
+  } else {
+    print('Error: Data yang diterima bukan List');
+    return null;
+  }
+}
+```
+
+**Features:**
+- **Type Safety**: Validate response data adalah List
+- **Model Mapping**: Automatic conversion ke VideoDoaModel
+- **Error Logging**: Detailed error messages untuk debugging
+- **Null Safety**: Return null jika data invalid
+</Accordion>
+
+<Accordion title="getVideoById()">
+```dart
+Future<VideoDoaModel?> getVideoById(String videoid) async
+```
+
+**Endpoint:** `GET /api/Videos/{videoid}`
+
+**Fungsi:** Fetch detail video berdasarkan ID
+
+**Request Flow:**
+```dart
+final response = await _dio.get('/Videos/$videoid');
+
+if (response.statusCode == 200 && response.data != null) {
+  return VideoDoaModel.fromJson(response.data);
+} else {
+  print('Error ${response.statusCode}: Video tidak ditemukan.');
+  return null;
+}
+```
+
+**Error Scenarios:**
+- **404 Not Found**: Video ID tidak exist di database
+- **500 Server Error**: Backend issues
+- **Network Error**: Connection problems
+- **Timeout**: Request timeout exceeded
+</Accordion>
+
+---
+
+## 📊 Models & Data
+
+### VideoDoaModel
+
+**Path:** `lib/features/doa/models/video_doa_model.dart`
+
+Data model untuk video manasik dengan comprehensive video metadata.
+
+#### Model Structure:
+
+<Accordion title="VideoDoaModel Properties">
+```dart
+class VideoDoaModel {
+  final String videoId;      // Unique video identifier
+  final String judul;        // Video title
+  final String deskripsi;    // Video description (HTML content)
+  final String thumbnail;    // Thumbnail image URL
+  final String videoUrl;     // Video streaming URL
+  final String createdAt;    // Upload timestamp
+}
+```
+
+**Properties Details:**
+- **videoId**: Primary key untuk video identification
+- **judul**: Title yang ditampilkan di UI (dapat contain HTML)
+- **deskripsi**: Rich text description (support HTML formatting)
+- **thumbnail**: Image preview untuk video cards
+- **videoUrl**: Direct link ke video file untuk streaming
+- **createdAt**: Timestamp untuk sorting dan filtering
+</Accordion>
+
+#### JSON Serialization:
+
+<Accordion title="API Mapping">
+```dart
+factory VideoDoaModel.fromJson(Map<String, dynamic> json) {
+  return VideoDoaModel(
+    videoId: json['videoid'] ?? '',
+    judul: json['judul_vid'] ?? '',
+    deskripsi: json['deskripsi'] ?? '',
+    thumbnail: json['thumbnail'] ?? '',
+    videoUrl: json['link_vid'] ?? '',
+    createdAt: json['created_at'] ?? '',
+  );
+}
+
+Map<String, dynamic> toJson() {
+  return {
+    'videoid': videoId,
+    'judul_vid': judul,
+    'deskripsi': deskripsi,
+    'thumbnail': thumbnail,
+    'link_vid': videoUrl,
+    'created_at': createdAt,
+  };
+}
+```
+
+**API Field Mapping:**
+- `videoid` ↔ `videoId`
+- `judul_vid` ↔ `judul`
+- `deskripsi` ↔ `deskripsi`
+- `thumbnail` ↔ `thumbnail`
+- `link_vid` ↔ `videoUrl`
+- `created_at` ↔ `createdAt`
+
+**Safety Features:**
+- **Null Fallbacks**: Empty string default untuk missing fields
+- **Type Safety**: Explicit null checks dengan ?? operator
+- **Consistent Naming**: CamelCase untuk Dart, snake_case untuk API
+</Accordion>
+
+---
+
+## 🎨 Views & UI
+
+### ManasikScreen
+
+**Path:** `lib/features/doa/views/manasik_screen.dart`
+
+Main screen dengan grid layout dan animated video cards.
+
+#### Layout Architecture:
+
+<Accordion title="Screen Structure">
+```dart
+Scaffold(
+  extendBodyBehindAppBar: true,
+  appBar: WCustomAppBar(title: 'Video Manasik'),
+  body: Column([
+    // Header text
+    Text('Pilih yang sesuai dengan\nkebutuhan anda'),
+    
+    // Animated grid
+    MasonryGridView.builder(
+      crossAxisCount: 2,
+      itemBuilder: (context, index) => AnimatedVideoCard(),
+    ),
+  ]),
+);
+```
+
+**Design Elements:**
+- **Extended App Bar**: Transparent overlay untuk immersive experience
+- **Custom Header**: Descriptive text dengan typography styling
+- **Masonry Grid**: Staggered layout untuk visual variety
+- **Responsive**: Auto-adjust berdasarkan screen size
+</Accordion>
+
+#### Animation System:
+
+<Accordion title="Staggered Animations">
+```dart
+AnimationLimiter(
+  child: MasonryGridView.builder(
+    itemBuilder: (context, index) {
+      return AnimationConfiguration.staggeredGrid(
+        columnCount: 2,
+        position: index,
+        delay: const Duration(milliseconds: 300),
+        child: ScaleAnimation(
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.fastLinearToSlowEaseIn,
+          scale: 1.5,
+          child: FadeInAnimation(
+            child: VideoCard(...),
+          ),
+        ),
+      );
+    },
+  ),
+);
+```
+
+**Animation Features:**
+- **Staggered Entry**: Cards muncul berurutan dengan delay
+- **Scale Animation**: Zoom effect dari 1.5x ke normal
+- **Fade Animation**: Smooth opacity transition
+- **Custom Curve**: fastLinearToSlowEaseIn untuk natural feel
+- **Configurable Timing**: 300ms delay, 600ms duration
+</Accordion>
+
+#### Video Cards:
+
+<Accordion title="Dynamic Card Design">
+```dart
+// Gradient system (3 variations)
+final List<LinearGradient> gradients = [
+  LinearGradient(colors: [Color(0xFFF58634), Color(0xFFFF9242)]), // Orange
+  LinearGradient(colors: [Color(0xFF319F43), Color(0xFF4CC15F)]), // Green  
+  LinearGradient(colors: [Color(0xFF43A5D9), Color(0xFF1D8CC6)]), // Blue
+];
+
+// Card structure
+GestureDetector(
+  onTap: () => navigateToDetail(),
+  child: Container(
+    decoration: BoxDecoration(
+      gradient: gradients[index % gradients.length],
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Stack([
+      // Thumbnail image
+      Container(
+        height: 84,
+        decoration: BoxDecoration(
+          image: DecorationImage(
+            image: NetworkImage(video.thumbnail),
+            fit: BoxFit.fill,
+          ),
+        ),
+      ),
+      
+      // Title (HTML stripped)
+      Text(video.judul.replaceAll(RegExp(r'<.*?>'), '')),
+      
+      // CTA button
+      Row([
+        Text('Mulai Disini'),
+        Icon(Icons.keyboard_arrow_right),
+      ]),
+      
+      // Decorative shapes
+      GradientShapeWidget(variant: (index % 3) + 1),
+      FoldShape(index: '${index + 1}'),
+    ]),
+  ),
+);
+```
+
+**Card Features:**
+- **Rotating Gradients**: 3 gradient variations cycling by index
+- **Network Thumbnails**: Auto-load dari URL dengan fallback
+- **HTML Stripping**: Clean title text dengan RegExp
+- **Interactive CTA**: Clear call-to-action dengan arrow
+- **Decorative Elements**: Gradient shapes dan numbered folds
+- **Tap Navigation**: Direct navigation ke detail screen
+</Accordion>
+
+---
+
+### DetailBacaanManasik Widget
+
+**Path:** `lib/features/doa/widgets/detail_manasik.dart`
+
+Advanced video player screen dengan offline support dan connectivity monitoring.
+
+#### Video Player Integration:
+
+<Accordion title="YoYo Player Setup">
+```dart
+YoYoPlayer(
+  aspectRatio: 16 / 9,
+  url: isOnline ? video.videoUrl : cachedVideoPath ?? video.videoUrl,
+  videoStyle: VideoStyle(
+    videoDurationStyle: GoogleFonts.lato(...),
+    progressIndicatorColors: VideoProgressColors(
+      playedColor: GlobalColors.mainColor,
+    ),
+    playIcon: Icon(MingCuteIcons.mgc_play_circle_fill),
+    pauseIcon: Icon(MingCuteIcons.mgc_pause_circle_fill),
+    forwardIcon: Icon(MingCuteIcons.mgc_fast_forward_fill),
+    backwardIcon: Icon(MingCuteIcons.mgc_fast_rewind_fill),
+  ),
+  allowCacheFile: true,
+  onCacheFileCompleted: (files) => saveCachedVideoPath(),
+  onFullScreen: (value) => setState(() => fullscreen = value),
+);
+```
+
+**Player Features:**
+- **16:9 Aspect Ratio**: Standard video format
+- **Custom Controls**: Branded icons dan colors
+- **Progress Indicator**: Branded color scheme
+- **Forward/Backward**: 10-second skip controls
+- **Fullscreen Support**: Toggle dengan state management
+- **Custom Typography**: Google Fonts integration
+</Accordion>
+
+#### Offline Caching System:
+
+<Accordion title="Smart Caching">
+```dart
+// Cache file management
+Future<void> saveCachedVideoPath(String path) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('cachedVideoPath', path);
+}
+
+Future<String?> getCachedVideoPath() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString('cachedVideoPath');
+}
+
+// Cache validation
+getCachedVideoPath().then((path) async {
+  if (path != null) {
+    final file = File(path);
+    if (await file.exists()) {
+      setState(() => cachedVideoPath = path);
+    }
+  }
+});
+
+// Cache completion handler
+onCacheFileCompleted: (files) {
+  if (files != null && files.isNotEmpty) {
+    for (var file in files) {
+      saveCachedVideoPath(file.path);
+    }
+  }
+},
+```
+
+**Caching Features:**
+- **Automatic Caching**: Background download saat video dimainkan
+- **File Validation**: Check cached file existence sebelum use
+- **SharedPreferences**: Persistent storage untuk cache paths
+- **Multiple Files**: Support untuk multiple quality/segments
+- **Error Handling**: Graceful fallback jika cache fails
+</Accordion>
+
+#### Connectivity Monitoring:
+
+<Accordion title="Online/Offline Detection">
+```dart
+// Monitor connectivity changes
+void monitorConnectivity() {
+  Connectivity().onConnectivityChanged.listen((connectivityResult) {
+    setState(() {
+      isOnline = connectivityResult != ConnectivityResult.none;
+    });
+  });
+}
+
+// Offline indicator
+if (!isOnline && !fullscreen)
+  Container(
+    width: double.infinity,
+    color: Colors.red,
+    child: Center(
+      child: Text(
+        'Offline Mode',
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      ),
+    ),
+  ),
+
+// Smart URL selection
+url: isOnline 
+    ? video.videoUrl 
+    : cachedVideoPath ?? video.videoUrl,
+```
+
+**Connectivity Features:**
+- **Real-time Monitoring**: Listen to connectivity changes
+- **Visual Indicator**: Red banner untuk offline mode
+- **Smart Fallback**: Auto-switch ke cached video saat offline
+- **Graceful Degradation**: Tetap bisa play video dari cache
+- **User Awareness**: Clear indication of current connection state
+</Accordion>
+
+#### Content Rendering:
+
+<Accordion title="HTML Content Support">
+```dart
+// Video description dengan HTML support
+Html(
+  data: video.deskripsi,
+  style: {
+    "body": Style(
+      fontFamily: GoogleFonts.lato().fontFamily,
+      fontSize: FontSize(14),
+      color: Colors.black87,
+      margin: Margins.zero,
+    ),
+    "p": Style(marginBottom: Margin(8)),
+    "strong": Style(fontWeight: FontWeight.bold),
+    "em": Style(fontStyle: FontStyle.italic),
+  },
+);
+```
+
+**HTML Features:**
+- **Rich Text**: Support untuk HTML formatting
+- **Custom Styling**: Consistent typography dengan app theme
+- **Responsive**: Auto-adjust untuk different screen sizes
+- **Safe Rendering**: HTML sanitization untuk security
+</Accordion>
+
+---
+
+## 🔄 Dependency Injection
+
+### ManasikScreenBinding
+
+**Path:** `lib/features/doa/bindings/manasik_screen_binding.dart`
+
+Dependency injection setup untuk controller management.
+
+<Accordion title="Binding Configuration">
+```dart
+class ManasikScreenBinding implements Bindings {
+  @override
+  void dependencies() {
+    Get.lazyPut<VideoDoaController>(() => VideoDoaController());
+  }
+}
+```
+
+**Features:**
+- **Lazy Loading**: Controller hanya di-create saat dibutuhkan
+- **Memory Efficient**: Automatic disposal saat tidak digunakan
+- **Single Instance**: Shared instance across related screens
+- **Clean Architecture**: Proper separation of concerns
+
+**Usage:**
+```dart
+// In routes
+GetPage(
+  name: '/manasikScreen',
+  page: () => ManasikScreen(),
+  binding: ManasikScreenBinding(),
+);
+```
+</Accordion>
+
+---
+
+## 🦴 Loading States
+
+### DoaManasikLoader
+
+**Path:** `lib/features/doa/lazy_loader/doa_manasik_loader.dart`
+
+Skeleton loading untuk main video list screen.
+
+<Accordion title="Skeleton Layout">
+```dart
+SafeArea(
+  child: Column([
+    // Header skeleton (2 lines)
+    Container(
+      margin: const EdgeInsets.fromLTRB(20, 15, 80, 10),
+      height: 26,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: const Color(0xFFE9E9E9),
+      ),
+    ),
+    
+    // Grid skeleton (6 cards)
+    GridView.builder(
+      crossAxisCount: 2,
+      itemBuilder: (context, index) => Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          color: const Color(0xFFE9E9E9),
+        ),
+      ),
+      itemCount: 6,
+    ),
+  ]),
+);
+```
+
+**Design Features:**
+- **Realistic Layout**: Matches actual content structure
+- **Shimmer Effect**: Subtle loading indication
+- **Proper Spacing**: Consistent dengan real content
+- **Grid Pattern**: 2x3 grid untuk 6 placeholder cards
+</Accordion>
+
+### DoaManasikDetailLoader
+
+**Path:** `lib/features/doa/lazy_loader/doa_manasik_detail_loader.dart`
+
+Skeleton loading untuk video detail screen.
+
+<Accordion title="Detail Skeleton">
+```dart
+SafeArea(
+  child: Column([
+    // Video player skeleton
+    AspectRatio(
+      aspectRatio: 16 / 9,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: const Color(0xFFE9E9E9),
+        ),
+      ),
+    ),
+    
+    // Title skeleton
+    Container(
+      margin: const EdgeInsets.fromLTRB(20, 15, 80, 14),
+      height: 22,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(4),
+        color: const Color(0xFFE9E9E9),
+      ),
+    ),
+    
+    // Description lines (4 lines)
+    ...List.generate(4, (index) => Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      height: 12,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(4),
+        color: const Color(0xFFE9E9E9),
+      ),
+    )),
+  ]),
+);
+```
+
+**Layout Elements:**
+- **Video Placeholder**: 16:9 aspect ratio container
+- **Title Placeholder**: Single line dengan variable width
+- **Description Placeholders**: 4 lines untuk simulate paragraphs
+- **Realistic Spacing**: Match dengan actual content margins
+</Accordion>
+
+---
+
+## 🚀 Usage Examples
+
+### Basic Implementation
+
+<Accordion title="Controller Setup">
+```dart
+class ManasikScreen extends StatefulWidget {
+  final VideoDoaController _videoDoaController = Get.find<VideoDoaController>();
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Obx(() {
+        if (_videoDoaController.isLoading.value) {
+          return const DoaManasikLoader();
+        }
+        
+        return VideoGridView();
+      }),
+    );
+  }
+}
+```
+</Accordion>
+
+### Video Navigation
+
+<Accordion title="Navigation Pattern">
+```dart
+// Set video ID
+_videoDoaController.videoId.value = video.videoId;
+
+// Navigate with binding
+Get.to(
+  () => DetailBacaanManasik(),
+  binding: ManasikScreenBinding(),
+);
+
+// Auto-fetch detail di destination screen
+@override
+void initState() {
+  super.initState();
+  Future.delayed(Duration.zero, () {
+    widget._videoDoaController.fetchVideoById();
+  });
+}
+```
+</Accordion>
+
+### Offline Handling
+
+<Accordion title="Cache Management">
+```dart
+// Initialize cache checking
+@override
+void initState() {
+  super.initState();
+  
+  getCachedVideoPath().then((path) async {
+    if (path != null) {
+      final file = File(path);
+      if (await file.exists()) {
+        setState(() => cachedVideoPath = path);
+      }
+    }
+  });
+  
+  monitorConnectivity();
+}
+
+// Smart video URL selection
+String getVideoUrl() {
+  return isOnline 
+      ? video.videoUrl 
+      : cachedVideoPath ?? video.videoUrl;
+}
+```
+</Accordion>
+
+---
+
+## ⚙️ Configuration
+
+### Dependencies
+
+<Accordion title="Required Packages">
+```yaml
+dependencies:
+  # Video playback
+  lecle_yoyo_player: ^1.5.0        # Advanced video player
+  appinio_video_player: ^1.2.4     # Alternative video player
+  
+  # Animations
+  flutter_staggered_animations: ^1.1.1
+  flutter_staggered_grid_view: ^0.6.2
+  
+  # Content rendering
+  flutter_html: ^3.0.0-beta.2     # HTML content support
+  
+  # Connectivity
+  connectivity_plus: ^4.0.2       # Network status monitoring
+  
+  # Storage
+  shared_preferences: ^2.2.0      # Local data persistence
+  
+  # UI
+  google_fonts: ^5.1.0           # Typography
+  ming_cute_icons: ^3.0.0        # Custom icons
+```
+</Accordion>
+
+### API Configuration
+
+<Accordion title="Endpoints Setup">
+```dart
+// In endpoints.dart
+class Endpoints {
+  static const String baseUrl2 = 'https://api.maqdisconnect.com';
+  
+  // Video endpoints
+  static const String videosUrl = '/api/Videos';
+  static const String videoDetailUrl = '/api/Videos/{id}';
+}
+
+// Service configuration
+final Dio _dio = Dio(BaseOptions(
+  baseUrl: '${Endpoints.baseUrl2}/api',
+  connectTimeout: Duration(seconds: 30),
+  receiveTimeout: Duration(seconds: 30),
+));
+```
+</Accordion>
+
+---
+
+## 🎨 Assets & Styling
+
+### Visual Design
+
+<Accordion title="Color Schemes">
+```dart
+// Card gradients
+final List<LinearGradient> gradients = [
+  LinearGradient(colors: [Color(0xFFF58634), Color(0xFFFF9242)]), // Orange
+  LinearGradient(colors: [Color(0xFF319F43), Color(0xFF4CC15F)]), // Green
+  LinearGradient(colors: [Color(0xFF43A5D9), Color(0xFF1D8CC6)]), // Blue
+];
+
+// Loading skeleton color
+const Color skeletonColor = Color(0xFFE9E9E9);
+
+// Brand colors
+GlobalColors.mainColor // Primary brand color untuk controls
+```
+</Accordion>
+
+### Typography
+
+<Accordion title="Font Styling">
+```dart
+// Headers
+GoogleFonts.lato(
+  fontSize: 24,
+  fontWeight: FontWeight.w700,
+)
+
+// Video titles
+GoogleFonts.lato(
+  fontSize: 16,
+  fontWeight: FontWeight.w700,
+  color: Colors.white,
+)
+
+// CTA text
+GoogleFonts.lato(
+  fontSize: 12,
+  fontWeight: FontWeight.w700,
+  color: Colors.white,
+)
+```
+</Accordion>
+
+---
+
+## 🔒 Security & Performance
+
+### Video Security
+
+<Accordion title="Content Protection">
+- **URL Validation**: Validate video URLs sebelum playback
+- **HTTPS Only**: Secure video streaming
+- **HTML Sanitization**: Safe HTML rendering untuk descriptions
+- **File Validation**: Check cached files untuk integrity
+</Accordion>
+
+### Performance Optimization
+
+<Accordion title="Optimization Strategies">
+- **Lazy Loading**: Controller hanya di-create saat needed
+- **Image Caching**: Network thumbnails automatically cached
+- **Video Caching**: Background caching untuk offline viewing
+- **Memory Management**: Proper disposal of controllers dan players
+- **Progressive Loading**: Skeleton loading untuk better UX
+</Accordion>
+
+---
+
+## 📋 Error Handling
+
+### Network Errors
+
+<Accordion title="API Error Handling">
+```dart
+try {
+  final videos = await _videoService.getVideoDoa();
+  if (videos != null) {
+    videoList.assignAll(videos);
+  }
+} catch (e) {
+  print('Error fetching videos: $e');
+  // Show user-friendly error message
+  // Fallback to cached data if available
+} finally {
+  isLoading.value = false;
+}
+```
+
+**Error Types:**
+- Network connectivity issues
+- API server errors (500, 503)
+- Data parsing errors
+- Timeout errors
+- Video streaming failures
+</Accordion>
+
+### Video Playback Errors
+
+<Accordion title="Playback Fallbacks">
+```dart
+// Cache error handling
+onCacheFileFailed: (error) {
+  print('Cache file error ::: $error');
+  // Continue with streaming if cache fails
+},
+
+// Offline fallback
+url: isOnline 
+    ? video.videoUrl 
+    : cachedVideoPath ?? video.videoUrl,
+```
+
+**Fallback Strategies:**
+- Cached video when offline
+- Lower quality when bandwidth limited
+- Error screen untuk invalid video URLs
+- Retry mechanism untuk temporary failures
+</Accordion>
+
+---
+
+## 🔗 Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Beranda Integration" href="/features/beranda" icon="house">
+    Navigation dari beranda ke manasik videos
+  </Card>
+  
+  <Card title="Player Features" href="/features/player" icon="headphones">
+    Audio room integration dan player features
+  </Card>
+  
+  <Card title="API Documentation" href="/api/videos" icon="code">
+    Backend API specifications untuk videos
+  </Card>
+  
+  <Card title="UI Components" href="/components/video" icon="palette">
+    Reusable video components documentation
+  </Card>
+</CardGroup>
+
+---
+
+<Info>
+**Note:** Modul doa & manasik menyediakan pengalaman video yang comprehensive dengan offline support. Pastikan permissions dan network handling properly configured untuk optimal performance.
+</Info>

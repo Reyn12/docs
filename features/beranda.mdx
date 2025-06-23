@@ -1,4 +1,1101 @@
 ---
-title: "Beranda"
-description: "Description of your new file."
+title: "Beranda Module"
+description: "Dokumentasi lengkap untuk fitur beranda (dashboard utama) di aplikasi Maqdis Connect"
+icon: "house"
 ---
+
+# Beranda Module
+
+Modul beranda adalah dashboard utama aplikasi yang menyediakan informasi penting seperti jadwal sholat, lokasi user, dan navigasi ke fitur-fitur utama.
+
+## 🏗️ Arsitektur
+
+```
+lib/features/beranda/
+├── controllers/          # Business logic dan state management
+│   ├── location_controller.dart
+│   └── prayer_times_controller.dart
+├── models/              # Data structures
+│   └── perjalanan_model.dart
+├── views/               # UI screens
+│   ├── beranda_screen_new.dart
+│   └── responsive/
+│       ├── beranda_mobile_screen.dart
+│       └── beranda_desktop_screen.dart
+└── widgets/             # Reusable UI components
+    ├── all_features_bottom.dart
+    ├── prayer_times.dart
+    └── time_diff.dart
+```
+
+## 🌟 Fitur Utama
+
+<CardGroup cols={2}>
+  <Card title="Location Services" icon="location-dot">
+    - GPS tracking otomatis
+    - Real-time location updates
+    - Permission handling
+    - Integration dengan audio room
+  </Card>
+  <Card title="Prayer Times" icon="moon">
+    - Jadwal sholat berdasarkan lokasi
+    - Auto-refresh setiap hari
+    - Timezone detection
+    - Metode perhitungan Karachi/Shafi
+  </Card>
+  <Card title="Time Display" icon="clock">
+    - Waktu Jakarta & Mekkah
+    - Real-time updates setiap detik
+    - Responsive formatting
+  </Card>
+  <Card title="Feature Navigation" icon="compass">
+    - Quick access ke Umroh
+    - Video Manasik
+    - Responsive design
+    - Animated UI elements
+  </Card>
+</CardGroup>
+
+---
+
+## 📱 Controllers
+
+### LocationController
+
+**Path:** `lib/features/beranda/controllers/location_controller.dart`
+
+Controller utama untuk mengelola layanan lokasi dan GPS tracking dengan real-time updates.
+
+#### Key Features:
+
+- **GPS Permission Management**: Request dan handle location permissions
+- **Real-time Tracking**: Continuous location updates dengan interval yang dapat disesuaikan
+- **Smart Updates**: Hanya update lokasi jika perubahan signifikan (\>10 meter)
+- **Audio Room Integration**: Kirim lokasi ke audio room untuk fitur proximity
+
+#### Properties:
+
+<Accordion title="Reactive Variables">
+  ```dart
+  Rx<Position?> currentPosition = Rx<Position?>(null);  // Current GPS position
+  RxBool isLocationLoading = false.obs;                 // Loading state
+  RxString errorMessage = ''.obs;                       // Error messages
+  RxDouble latitude = 0.0.obs;                          // Current latitude
+  RxDouble longitude = 0.0.obs;                         // Current longitude
+  Timer? _locationUpdateTimer;                          // Timer for updates
+  ```
+</Accordion>
+
+#### Methods:
+
+<Accordion title="checkAndRequestPermission()">
+  ```dart
+  Future<void> checkAndRequestPermission() async
+  ```
+
+  **Fungsi:** Handle GPS permission flow dengan user-friendly messaging
+
+  **Flow:**
+
+  1. Check current permission status
+  2. Jika denied → Request permission
+  3. Jika denied forever → Show permanent denial message
+  4. Jika granted → Mulai ambil lokasi
+  5. Set appropriate error messages untuk setiap case
+
+  **Permission States:**
+
+  - `LocationPermission.denied` → Request permission
+  - `LocationPermission.deniedForever` → Show settings dialog
+  - `LocationPermission.granted` → Proceed with location services
+</Accordion>
+
+<Accordion title="startLocationUpdates()">
+  ```dart
+  void startLocationUpdates({int intervalSeconds = 5}) async
+  ```
+
+  **Fungsi:** Mulai real-time location tracking dengan smart updates
+
+  **Smart Update Logic:**
+
+  1. Check GPS service availability
+  2. Verify location permissions
+  3. Get current position dengan best accuracy
+  4. Calculate distance moved dari posisi sebelumnya
+  5. Update hanya jika perubahan \> 10 meter
+  6. Send location ke AudioRoomController untuk proximity features
+  7. Update distance ke semua users lain di room
+
+  **Performance Optimizations:**
+
+  - `LocationAccuracy.best` untuk akurasi maksimal
+  - `timeLimit: 5 seconds` untuk avoid hanging
+  - Distance threshold 10 meter untuk avoid spam updates
+  - Timer-based updates setiap 5 detik (configurable)
+</Accordion>
+
+<Accordion title="Integration dengan Audio Room">
+  ```dart
+  final audioRoomController = Get.find<AudioRoomController>();
+  audioRoomController.sendLocationToMetadata(latitude.value, longitude.value);
+  
+  // Update distance ke semua user lain
+  audioRoomController.otherUsersLocation.forEach((userId, pos) {
+    audioRoomController.updateDistance(userId, pos.latitude, pos.longitude);
+  });
+  ```
+
+  **Functionality:**
+
+  - Send location metadata ke audio room
+  - Calculate dan update distance ke semua participants
+  - Enable proximity-based features di audio room
+  - Real-time distance tracking antar users
+</Accordion>
+
+<Accordion title="stopLocationUpdates() & refreshLocation()">
+  ```dart
+  void stopLocationUpdates()
+  void refreshLocation() async
+  ```
+
+  **Stop Updates:**
+
+  - Cancel active timer
+  - Clean up resources
+  - Reset location tracking state
+
+  **Manual Refresh:**
+
+  - Force immediate location update
+  - Restart tracking dengan fresh data
+  - Useful untuk user-triggered refresh
+</Accordion>
+
+---
+
+### PrayerTimesController
+
+**Path:** `lib/features/beranda/controllers/prayer_times_controller.dart`
+
+Controller khusus untuk mengelola jadwal sholat dengan lokasi dinamis dan auto-refresh harian.
+
+#### Key Features:
+
+- **Location-Based Calculation**: Jadwal sholat berdasarkan GPS coordinates
+- **Auto Daily Reset**: Refresh jadwal setiap tengah malam
+- **Multi-Timezone Support**: Jakarta, Mekkah, dan timezone detection
+- **Real-time Clock**: Update waktu setiap detik
+- **Karachi Method**: Metode perhitungan dengan madhab Shafi
+
+#### Properties:
+
+<Accordion title="Reactive Variables">
+  ```dart
+  Rx<PrayerTimes?> prayerTimes = Rx<PrayerTimes?>(null);  // Prayer schedule
+  RxBool isPrayerTimesLoading = false.obs;                // Loading state  
+  RxString jakartaTime = ''.obs;                          // Jakarta time display
+  RxString mekkahTime = ''.obs;                           // Makkah time display
+  Timer? _timer;                                          // Clock timer
+  Timer? _dailyResetTimer;                                // Daily reset timer
+  ```
+</Accordion>
+
+#### Methods:
+
+<Accordion title="getPrayerTimes()">
+  ```dart
+  Future<void> getPrayerTimes(Position position) async
+  ```
+
+  **Fungsi:** Calculate prayer times berdasarkan GPS coordinates
+
+  **Calculation Setup:**
+
+  ```dart
+  // Location detection berdasarkan coordinates
+  final location = tz.getLocation(_getTimeZoneFromLatLong(lat, lng));
+  
+  // Coordinates untuk calculation
+  Coordinates coordinates = Coordinates(position.latitude, position.longitude);
+  
+  // Prayer calculation parameters
+  PrayerCalculationParameters params = PrayerCalculationMethod.karachi();
+  params.madhab = PrayerMadhab.shafi;
+  
+  // Generate prayer times
+  prayerTimes.value = PrayerTimes(
+    coordinates: coordinates,
+    calculationParameters: params,
+    precision: true,
+    locationName: location.name,
+  );
+  ```
+
+  **Supported Methods:**
+
+  - **Calculation Method**: Karachi (University of Islamic Sciences, Karachi)
+  - **Madhab**: Shafi (untuk Asr calculation)
+  - **Precision**: High precision calculation enabled
+  - **Timezone**: Auto-detection berdasarkan coordinates
+</Accordion>
+
+<Accordion title="updateTimes()">
+  ```dart
+  void updateTimes()
+  ```
+
+  **Fungsi:** Real-time clock update setiap detik
+
+  **Time Calculations:**
+
+  ```dart
+  // Jakarta Time (UTC+7)
+  final jakartaNow = now.toUtc().add(const Duration(hours: 7));
+  jakartaTime.value = DateFormat('HH:mm').format(jakartaNow);
+  
+  // Makkah Time (UTC+3)  
+  final mekkahNow = now.toUtc().add(const Duration(hours: 3));
+  mekkahTime.value = DateFormat('HH:mm').format(mekkahNow);
+  ```
+
+  **Features:**
+
+  - Real-time updates setiap detik
+  - Multiple timezone support
+  - Formatted time display (HH:mm)
+  - Reactive UI updates
+</Accordion>
+
+<Accordion title="scheduleDailyPrayerTimesUpdate()">
+  ```dart
+  void scheduleDailyPrayerTimesUpdate()
+  ```
+
+  **Fungsi:** Auto-refresh jadwal sholat setiap hari di tengah malam
+
+  **Scheduling Logic:**
+
+  ```dart
+  // Calculate time until midnight
+  final now = DateTime.now();
+  final nextMidnight = DateTime(now.year, now.month, now.day + 1, 0, 0, 0);
+  final durationUntilMidnight = nextMidnight.difference(now);
+  
+  // Schedule reset timer
+  _dailyResetTimer = Timer(durationUntilMidnight, () {
+    // Refresh prayer times
+    if (_locationController.currentPosition.value != null) {
+      getPrayerTimes(_locationController.currentPosition.value!);
+    }
+    // Schedule next day reset
+    scheduleDailyPrayerTimesUpdate();
+  });
+  ```
+
+  **Benefits:**
+
+  - Automatic daily prayer schedule refresh
+  - No manual intervention required
+  - Handles date changes properly
+  - Recursive scheduling untuk continuous operation
+</Accordion>
+
+<Accordion title="_getTimeZoneFromLatLong()">
+  ```dart
+  String _getTimeZoneFromLatLong(double latitude, double longitude)
+  ```
+
+  **Fungsi:** Auto-detect timezone berdasarkan GPS coordinates
+
+  **Timezone Regions:**
+
+  ```dart
+  // Indonesia Region
+  if (lat >= -10.0 && lat <= 6.0 && lng >= 95.0 && lng <= 141.0) {
+    return 'Asia/Jakarta';
+  }
+  
+  // Saudi Arabia Region  
+  else if (lat >= 21.0 && lat <= 26.0 && lng >= 39.0 && lng <= 50.0) {
+    return 'Asia/Riyadh';
+  }
+  
+  // Default fallback
+  else {
+    return 'UTC';
+  }
+  ```
+
+  **Supported Regions:**
+
+  - **Indonesia**: Asia/Jakarta timezone
+  - **Saudi Arabia**: Asia/Riyadh timezone
+  - **Other**: UTC fallback
+</Accordion>
+
+---
+
+## 🎨 Views & UI
+
+### BerandaScreenNew (Main Screen)
+
+**Path:** `lib/features/beranda/views/beranda_screen_new.dart`
+
+Main screen dengan responsive design yang automatically switch antara mobile dan desktop layout.
+
+#### Responsive Breakpoints:
+
+<Accordion title="Layout Switching">
+  ```dart
+  LayoutBuilder(builder: (context, constraints) {
+    double width = constraints.maxWidth;
+    return width > 1000
+        ? BerandaDesktopScreen(...)  // Desktop layout
+        : BerandaMobileScreen(...);  // Mobile layout
+  });
+  ```
+
+  **Breakpoint:** 1000px width
+
+  - **\> 1000px**: Desktop layout dengan expanded features
+  - **≤ 1000px**: Mobile layout dengan optimized UI
+</Accordion>
+
+#### Loading States:
+
+<Accordion title="Prayer Times Loading">
+  ```dart
+  Obx(() {
+    if (_prayerTimesController.isPrayerTimesLoading.value) {
+      return const Center(child: WEnumLoadingAnim());
+    }
+    return const SizedBox.shrink();
+  });
+  ```
+
+  **Loading Indicators:**
+
+  - Prayer times calculation loading
+  - Location permission processing
+  - GPS data fetching
+  - Custom animated loading widgets
+</Accordion>
+
+---
+
+### BerandaMobileScreen
+
+**Path:** `lib/features/beranda/views/responsive/beranda_mobile_screen.dart`
+
+Mobile-optimized layout dengan permission handling dan responsive components.
+
+#### Layout Structure:
+
+<Accordion title="Screen Layout">
+  ```dart
+  Stack([
+    // Background Header dengan gradient
+    Container(
+      height: MediaQuery.of(context).size.height / 1.8,
+      decoration: BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assets/bg_beranda.png'),
+          fit: BoxFit.cover,
+        ),
+      ),
+    ),
+    
+    // Bottom Features Panel
+    AllFeaturesBottom(...),
+  ]);
+  ```
+
+  **Layout Components:**
+
+  - **Header Section**: Background image dengan user greeting
+  - **Time Display**: Jakarta & Mekkah time
+  - **Prayer Times**: Location-based schedule
+  - **Bottom Panel**: Feature navigation cards
+</Accordion>
+
+#### Permission Handling:
+
+<Accordion title="_checkLocationPermission()">
+  ```dart
+  Future<bool> _checkLocationPermission() async {
+    var status = await Permission.location.status;
+    
+    // Handle different permission states
+    if (status.isGranted || status.isLimited) {
+      return true;
+    }
+    
+    if (status.isDenied) {
+      status = await Permission.location.request();
+      return status.isGranted || status.isLimited;
+    }
+    
+    return false; // permanently denied
+  }
+  ```
+
+  **Permission States:**
+
+  - **Granted/Limited**: Proceed with location features
+  - **Denied**: Show request dialog
+  - **Permanently Denied**: Show settings redirect
+  - **User-friendly error messages** untuk setiap state
+</Accordion>
+
+#### User Greeting:
+
+<Accordion title="Personalized Greeting">
+  ```dart
+  Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text("Assalamu'alaikum", style: ...),
+      Obx(() {
+        return Text(
+          profileController.profile.value.name,
+          style: GoogleFonts.lato(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        );
+      }),
+    ],
+  ),
+  ```
+
+  **Features:**
+
+  - Islamic greeting "Assalamu'alaikum"
+  - Personalized dengan user name dari profile
+  - Reactive updates via Obx
+  - White text pada background image
+</Accordion>
+
+---
+
+## 🧩 Widgets & Components
+
+### PrayerTimes Widget
+
+**Path:** `lib/features/beranda/widgets/prayer_times.dart`
+
+Display jadwal sholat dengan icons dan formatting yang consistent.
+
+#### Implementation:
+
+<Accordion title="Prayer Times Layout">
+  ```dart
+  Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+    WPrayerTime(
+      prayerType: 'Subuh',
+      prayerIcon: 'assets/icon/icon_subuh.png',
+      prayerTime: subuh
+    ),
+    WPrayerTime(
+      prayerType: 'Dzuhur', 
+      prayerIcon: 'assets/icon/icon_dzuhur.png',
+      prayerTime: dzuhur
+    ),
+    // ... similar for Ashar, Maghrib, Isya
+  ]);
+  ```
+
+  **Features:**
+
+  - **5 Daily Prayers**: Subuh, Dzuhur, Ashar, Maghrib, Isya
+  - **Custom Icons**: Unique icon untuk setiap waktu sholat
+  - **Responsive Layout**: Spaced evenly dengan MainAxisAlignment
+  - **Reusable Component**: WPrayerTime widget untuk consistency
+</Accordion>
+
+#### Time Formatting:
+
+<Accordion title="_formatTime() Helper">
+  ```dart
+  String _formatTime(DateTime? time) {
+    if (time == null) return "--:--";
+    return "${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
+  }
+  ```
+
+  **Features:**
+
+  - Null safety dengan fallback "--:--"
+  - Consistent HH:MM format
+  - Zero-padding untuk single digits
+  - Error-resistant implementation
+</Accordion>
+
+---
+
+### TimeDiff Widget
+
+**Path:** `lib/features/beranda/widgets/time_diff.dart`
+
+Display perbandingan waktu antara dua region dengan layout yang clean.
+
+#### Implementation:
+
+<Accordion title="Dual Time Display">
+  ```dart
+  Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      WLocalTime(regionName: regionName1, localTime: localTime1),
+      const SizedBox(width: 50),
+      WLocalTime(regionName: regionName2, localTime: localTime2),
+    ],
+  );
+  ```
+
+  **Usage:**
+
+  ```dart
+  TimeDiff(
+    regionName1: 'Jakarta',
+    regionName2: 'Mekkah', 
+    localTime1: prayerTimesController.jakartaTime.value,
+    localTime2: prayerTimesController.mekkahTime.value,
+  );
+  ```
+
+  **Features:**
+
+  - **Dual Region Support**: Show 2 timezones simultaneously
+  - **Real-time Updates**: Reactive dengan Obx wrapper
+  - **Centered Layout**: Clean spacing antara time displays
+  - **Reusable**: Accept any region names dan times
+</Accordion>
+
+---
+
+### AllFeaturesBottom Widget
+
+**Path:** `lib/features/beranda/widgets/all_features_bottom.dart`
+
+Bottom panel dengan feature cards untuk navigation ke fitur utama aplikasi.
+
+#### Layout Structure:
+
+<Accordion title="Bottom Panel Design">
+  ```dart
+  Positioned(
+    bottom: 0,
+    child: Container(
+      height: MediaQuery.of(context).size.height / 2.1,
+      decoration: BoxDecoration(
+        color: Color(0xFFFCFCFC),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(14),
+          topRight: Radius.circular(14)
+        ),
+      ),
+      child: Column(
+        children: [
+          Text('Semua Fitur', style: ...),
+          // Feature cards
+        ],
+      ),
+    ),
+  );
+  ```
+
+  **Design Features:**
+
+  - **Fixed Bottom Position**: Overlay pada main content
+  - **Rounded Top Corners**: Modern design dengan border radius
+  - **Light Background**: Contrast dengan main background
+  - **Half Screen Height**: Optimal space utilization
+</Accordion>
+
+#### Feature Cards:
+
+<Accordion title="Umroh Card">
+  ```dart
+  GestureDetector(
+    onTap: onTapUmroh,
+    child: Container(
+      height: MediaQuery.of(context).size.height / 7.5,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        image: DecorationImage(
+          image: AssetImage('assets/cards/card_umroh.png'),
+          fit: BoxFit.cover,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              children: [
+                Text('Yuk mulai umroh', style: ...),
+                Row([
+                  Text('Mulai Disini', style: ...),
+                  Icon(Icons.keyboard_arrow_right),
+                ]),
+              ],
+            ),
+          ),
+          Lottie.asset('assets/umroh_anim.json'),
+        ],
+      ),
+    ),
+  );
+  ```
+
+  **Features:**
+
+  - **Background Image**: Custom card design
+  - **Call-to-Action Text**: "Yuk mulai umroh"
+  - **Animated Lottie**: Interactive animation
+  - **Navigation Arrow**: Visual cue untuk interaction
+  - **Tap Handler**: Navigate to praktek screen
+</Accordion>
+
+<Accordion title="Manasik Card">
+  ```dart
+  GestureDetector(
+    onTap: onTapManasik,
+    child: Container(
+      height: MediaQuery.of(context).size.height / 10,
+      decoration: BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assets/cards/card_manasik.png'),
+          fit: BoxFit.fill,
+        ),
+      ),
+      child: Row([
+        Lottie.asset('assets/manasik_anim.json'),
+        Expanded(
+          child: Column([
+            Text('Nonton Video Manasik', style: ...),
+            Row([
+              Text('Mulai Disini', style: ...),
+              Icon(Icons.keyboard_arrow_right),
+            ]),
+          ]),
+        ),
+      ]),
+    ),
+  );
+  ```
+
+  **Features:**
+
+  - **Compact Design**: Smaller height for secondary feature
+  - **Right-aligned Content**: Text positioned di kanan
+  - **Video Focus**: "Nonton Video Manasik" messaging
+  - **Animated Icon**: Lottie animation di kiri
+  - **Navigation**: Navigate to manasik screen
+</Accordion>
+
+---
+
+## 📊 Models & Data
+
+### PerjalananModel
+
+**Path:** `lib/features/beranda/models/perjalanan_model.dart`
+
+Data model untuk trip/journey information yang digunakan di beranda context.
+
+#### Model Structure:
+
+<Accordion title="PerjalananModel Properties">
+  ```dart
+  class PerjalananModel {
+    final String perjalananId;     // Unique trip identifier
+    final String? namaPerjalanan;  // Trip name (nullable)
+    
+    PerjalananModel({
+      required this.perjalananId,
+      this.namaPerjalanan,
+    });
+  }
+  ```
+
+  **Features:**
+
+  - **Required ID**: Unique identifier untuk setiap trip
+  - **Optional Name**: Fallback to 'Unnamed Trip' jika null
+  - **JSON Serialization**: fromJson dan toJson methods
+  - **Null Safety**: Proper nullable handling
+</Accordion>
+
+#### JSON Handling:
+
+<Accordion title="Serialization Methods">
+  ```dart
+  // Parse dari API response
+  factory PerjalananModel.fromJson(Map<String, dynamic> json) {
+    return PerjalananModel(
+      perjalananId: json['perjalananid'] as String,
+      namaPerjalanan: json['nama_perjalanan'] as String? ?? 'Unnamed Trip',
+    );
+  }
+  
+  // Convert untuk API requests
+  Map<String, dynamic> toJson() {
+    return {
+      'perjalananid': perjalananId,
+      'nama_perjalanan': namaPerjalanan ?? 'Unnamed Trip',
+    };
+  }
+  ```
+
+  **Safety Features:**
+
+  - **Null Fallbacks**: Default values untuk missing data
+  - **Type Safety**: Explicit type casting
+  - **Consistent Naming**: Follow API field conventions
+</Accordion>
+
+---
+
+## 🔧 Technical Implementation
+
+### Location Services Integration
+
+<Accordion title="GPS Configuration">
+  ```dart
+  // Location accuracy settings
+  Position position = await Geolocator.getCurrentPosition(
+    desiredAccuracy: LocationAccuracy.best,
+    timeLimit: const Duration(seconds: 5),
+  );
+  
+  // Distance-based updates
+  double distanceMoved = Geolocator.distanceBetween(
+    previousLat, previousLng,
+    currentLat, currentLng,
+  );
+  
+  // Update only if moved > 10 meters
+  if (distanceMoved > 10) {
+    // Process location update
+  }
+  ```
+
+  **Optimizations:**
+
+  - **Best Accuracy**: LocationAccuracy.best untuk precision
+  - **Timeout Handling**: 5-second limit untuk avoid hanging
+  - **Smart Updates**: Distance threshold untuk reduce battery usage
+  - **Error Recovery**: Comprehensive error handling
+</Accordion>
+
+### Prayer Time Calculation
+
+<Accordion title="Calculation Parameters">
+  ```dart
+  // Setup coordinates
+  Coordinates coordinates = Coordinates(latitude, longitude);
+  
+  // Prayer calculation method
+  PrayerCalculationParameters params = PrayerCalculationMethod.karachi();
+  params.madhab = PrayerMadhab.shafi;
+  
+  // Generate prayer times
+  PrayerTimes prayerTimes = PrayerTimes(
+    coordinates: coordinates,
+    calculationParameters: params,
+    precision: true,
+    locationName: location.name,
+  );
+  ```
+
+  **Method Details:**
+
+  - **Karachi Method**: University of Islamic Sciences calculation
+  - **Shafi Madhab**: Asr calculation according to Shafi school
+  - **High Precision**: Enabled untuk accurate timing
+  - **Location Aware**: Timezone detection dari coordinates
+</Accordion>
+
+### Timer Management
+
+<Accordion title="Multiple Timers">
+  ```dart
+  // Real-time clock (every second)
+  _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+    updateTimes();
+  });
+  
+  // Location updates (every 5 seconds)
+  _locationUpdateTimer = Timer.periodic(Duration(seconds: 5), (timer) {
+    fetchLocation();
+  });
+  
+  // Daily prayer reset (calculated to midnight)
+  _dailyResetTimer = Timer(durationUntilMidnight, () {
+    refreshPrayerTimes();
+    scheduleDailyPrayerTimesUpdate();
+  });
+  ```
+
+  **Timer Types:**
+
+  - **Clock Timer**: Real-time display updates
+  - **Location Timer**: GPS position tracking
+  - **Daily Timer**: Prayer schedule refresh
+  - **Cleanup**: Proper timer disposal di onClose()
+</Accordion>
+
+---
+
+## 🚀 Usage Examples
+
+### Basic Setup
+
+<Accordion title="Controller Initialization">
+  ```dart
+  final ProfileController _profileController = Get.put(ProfileController());
+  final PrayerTimesController _prayerTimesController = Get.put(
+    PrayerTimesController(),
+    permanent: true,
+  );
+  
+  // Location controller auto-initialized via dependency
+  ```
+</Accordion>
+
+### Location Tracking
+
+<Accordion title="Start Location Services">
+  ```dart
+  final locationController = Get.find<LocationController>();
+  
+  // Check permissions dan start tracking
+  await locationController.checkAndRequestPermission();
+  
+  // Start dengan custom interval
+  locationController.startLocationUpdates(intervalSeconds: 10);
+  
+  // Manual refresh
+  locationController.refreshLocation();
+  
+  // Stop tracking
+  locationController.stopLocationUpdates();
+  ```
+</Accordion>
+
+### Prayer Times Display
+
+<Accordion title="Prayer Schedule UI">
+  ```dart
+  Obx(() {
+    final prayerTimes = prayerTimesController.prayerTimes.value;
+    if (prayerTimes == null) return LoadingWidget();
+    
+    return PrayerTimes(
+      subuh: _formatTime(prayerTimes.fajrStartTime),
+      dzuhur: _formatTime(prayerTimes.dhuhrStartTime),
+      ashar: _formatTime(prayerTimes.asrStartTime),
+      maghrib: _formatTime(prayerTimes.maghribStartTime),
+      isya: _formatTime(prayerTimes.ishaStartTime),
+    );
+  });
+  ```
+</Accordion>
+
+### Feature Navigation
+
+<Accordion title="Bottom Panel Navigation">
+  ```dart
+  AllFeaturesBottom(
+    onTapUmroh: () {
+      Get.toNamed('/praktekScreen');
+    },
+    onTapManasik: () {
+      Get.toNamed('/manasikScreen');
+    },
+  );
+  ```
+</Accordion>
+
+---
+
+## ⚙️ Configuration
+
+### Dependencies
+
+<Accordion title="Required Packages">
+  ```yaml
+  dependencies:
+    geolocator: ^9.0.2          # GPS location services
+    prayers_times: ^3.1.0       # Islamic prayer time calculation
+    timezone: ^0.9.2            # Timezone handling
+    permission_handler: ^10.4.3 # Permission management
+    lottie: ^2.4.0             # Animated illustrations
+    google_fonts: ^5.1.0       # Typography
+    intl: ^0.18.1              # Date/time formatting
+  ```
+</Accordion>
+
+### Permissions
+
+<Accordion title="Android Permissions">
+  ```xml
+  <!-- android/app/src/main/AndroidManifest.xml -->
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+  <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+  ```
+</Accordion>
+
+<Accordion title="iOS Permissions">
+  ```xml
+  <!-- ios/Runner/Info.plist -->
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>App needs location to show accurate prayer times</string>
+  <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+  <string>App needs location to show accurate prayer times</string>
+  ```
+</Accordion>
+
+---
+
+## 🎨 Assets & Resources
+
+### Images
+
+<Accordion title="Background & Cards">
+  ```
+  assets/
+  ├── bg_beranda.png          # Main background image
+  ├── cards/
+  │   ├── card_umroh.png      # Umroh feature card
+  │   └── card_manasik.png    # Manasik feature card
+  └── icon/
+      ├── icon_subuh.png      # Prayer time icons
+      ├── icon_dzuhur.png
+      ├── icon_ashar.png
+      ├── icon_maghrib.png
+      └── icon_isya.png
+  ```
+</Accordion>
+
+### Animations
+
+<Accordion title="Lottie Animations">
+  ```
+  assets/
+  ├── umroh_anim.json         # Umroh card animation
+  └── manasik_anim.json       # Manasik card animation
+  ```
+</Accordion>
+
+---
+
+## 🔒 Security & Privacy
+
+### Location Privacy
+
+<Accordion title="Privacy Considerations">
+  - **Permission-based**: Require explicit user consent
+  - **Purpose-clear**: Explain why location is needed
+  - **Opt-out**: Users can disable location features
+  - **Local-only**: Location data tidak disimpan di server permanen
+  - **Proximity-only**: Share distance, bukan exact coordinates
+</Accordion>
+
+### Data Handling
+
+<Accordion title="Data Management">
+  - **Temporary Storage**: Location data di memory saja
+  - **No Tracking**: Tidak track user movements
+  - **Prayer Calculation**: Local computation only
+  - **Clean Disposal**: Proper cleanup saat app close
+</Accordion>
+
+---
+
+## 📋 Error Handling
+
+### Location Errors
+
+<Accordion title="Common Location Issues">
+  ```dart
+  // GPS service disabled
+  if (!await Geolocator.isLocationServiceEnabled()) {
+    errorMessage.value = 'GPS tidak aktif';
+    return;
+  }
+  
+  // Permission denied
+  if (permission == LocationPermission.denied) {
+    errorMessage.value = 'Izin lokasi ditolak';
+    return;
+  }
+  
+  // Permission permanently denied
+  if (permission == LocationPermission.deniedForever) {
+    errorMessage.value = 'Izin lokasi ditolak secara permanen';
+    return;
+  }
+  ```
+
+  **Error Types:**
+
+  - GPS service disabled
+  - Permission denied/revoked
+  - Network connectivity issues
+  - Timeout errors
+  - Accuracy limitations
+</Accordion>
+
+### Prayer Time Errors
+
+<Accordion title="Calculation Fallbacks">
+  ```dart
+  try {
+    // Calculate prayer times
+    prayerTimes.value = PrayerTimes(...);
+  } catch (e) {
+    print('❌Error fetching prayer times: $e');
+    // Show fallback UI atau default times
+  } finally {
+    isPrayerTimesLoading.value = false;
+  }
+  ```
+
+  **Fallback Strategies:**
+
+  - Default prayer times untuk major cities
+  - Cached previous calculation
+  - Manual time input option
+  - Clear error messaging
+</Accordion>
+
+---
+
+## 🔗 Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Audio Room Integration" icon="headphones" href="/features/player">
+    Location sharing untuk proximity features
+  </Card>
+  <Card title="Profile Management" icon="user" href="/features/profile">
+    User profile data untuk personalization
+  </Card>
+  <Card title="Practice Features" icon="graduation-cap" href="/features/praktek">
+    Umroh practice dan learning modules
+  </Card>
+  <Card title="Manasik Videos" icon="video" href="/features/doa">
+    Video manasik dan doa guidance
+  </Card>
+</CardGroup>
+
+---
+
+<Info>
+  **Note:** Beranda module adalah entry point utama aplikasi. Pastikan semua dependencies properly configured dan permissions di-handle dengan baik untuk optimal user experience.
+</Info>

@@ -1,4 +1,818 @@
 ---
-title: "Auth"
-description: "Description of your new file."
+title: "Authentication Module"
+description: "Dokumentasi lengkap untuk fitur autentikasi di aplikasi Maqdis Connect"
+icon: "shield-check"
 ---
+
+# Authentication Module
+
+Modul autentikasi menyediakan sistem login, registrasi, dan manajemen akun pengguna yang lengkap dengan berbagai metode autentikasi.
+
+## 🏗️ Arsitektur
+
+```
+lib/features/auth/
+├── controllers/          # State management dan business logic
+│   ├── login_controller.dart
+│   ├── register_controller.dart
+│   ├── forgot_password_controller.dart
+│   └── logout_controller.dart
+├── services/            # API services dan komunikasi backend
+│   ├── auth_service.dart
+│   ├── google_auth_service.dart
+│   ├── otp_service.dart
+│   └── local/
+│       └── shared_preferences_service.dart
+├── models/              # Data models
+├── views/               # UI screens
+└── widgets/             # Reusable components
+```
+
+## 🔐 Fitur Utama
+
+<CardGroup cols={2}>
+  <Card title="Login Multi-Method" icon="key">
+    - Email & Password
+    - Google OAuth2
+    - Auto-save credentials
+  </Card>
+  <Card title="Registrasi Step-by-Step" icon="user-plus">
+    - Multi-step form validation
+    - Email verification dengan OTP
+    - WhatsApp integration
+  </Card>
+  <Card title="Reset Password" icon="lock-reset">
+    - OTP via email
+    - Step-by-step password reset
+    - Secure validation
+  </Card>
+  <Card title="Session Management" icon="clock">
+    - Automatic token handling
+    - Secure logout
+    - Login type tracking
+  </Card>
+</CardGroup>
+
+---
+
+## 📱 Controllers
+
+### LoginController
+
+**Path:** `lib/features/auth/controllers/login_controller.dart`
+
+Controller utama untuk mengelola proses login dengan multiple authentication methods.
+
+#### Key Features:
+
+- **Email/Password Login**: Autentikasi standar dengan validasi
+- **Google OAuth2**: Login menggunakan Google Sign-In
+- **OTP Verification**: Untuk akun yang belum terverifikasi
+- **Session Management**: Token handling dan user data storage
+
+#### Methods:
+
+<Accordion title="login(String email, String password)">
+  ```dart
+  Future<void> login(String email, String password) async
+  ```
+
+  **Fungsi:** Login menggunakan email dan password
+
+  **Flow:**
+
+  1. Set `isLoading = true` dan `isAttemptedLogin = true`
+  2. Call `AuthService.connectApi()` dengan credentials
+  3. Jika sukses:
+     - Simpan token dan user data ke SharedPreferences
+     - Set login type sebagai 'api'
+     - Navigate ke Home screen
+  4. Jika akun belum diverifikasi:
+     - Tampilkan dialog verifikasi
+     - Redirect ke email verification form
+  5. Handle error dan tampilkan pesan yang sesuai
+
+  **Error Handling:**
+
+  - Akun belum diverifikasi → Dialog verification
+  - Credentials salah → Toast error message
+  - Network error → Generic error message
+</Accordion>
+
+<Accordion title="signInWithGoogle()">
+  ```dart
+  Future<void> signInWithGoogle() async
+  ```
+
+  **Fungsi:** Login menggunakan Google OAuth2
+
+  **Flow:**
+
+  1. Initialize Google Sign-In dengan client ID dari .env
+  2. Trigger Google Sign-In flow
+  3. Ambil authentication tokens (idToken)
+  4. Kirim idToken ke backend melalui `GoogleAuthService`
+  5. Simpan response data (token, user info, group info)
+  6. Set login type sebagai 'google'
+  7. Navigate ke Home screen
+
+  **Configuration:**
+
+  - Google Client ID dari environment variable
+  - Scopes: profile dan email
+  - Platform-specific setup required
+</Accordion>
+
+<Accordion title="requestOTP() & verifyOTP()">
+  ```dart
+  Future<void> requestOTP() async
+  Future<bool> verifyOTP() async
+  ```
+
+  **Fungsi:** Request dan verifikasi OTP untuk akun yang belum diverifikasi
+
+  **Request OTP Flow:**
+
+  1. Call `OtpService.requestOtp()` dengan email dan type "register"
+  2. Tampilkan toast konfirmasi
+
+  **Verify OTP Flow:**
+
+  1. Call `OtpService.verifyOtp()` dengan email dan OTP code
+  2. Jika valid → Navigate ke success screen
+  3. Jika invalid → Tampilkan error message
+</Accordion>
+
+### RegisterController
+
+**Path:** `lib/features/auth/controllers/register_controller.dart`
+
+Controller untuk mengelola proses registrasi multi-step dengan validasi yang ketat.
+
+#### Key Features:
+
+- **Multi-Step Form**: Name → Email → WhatsApp → Password → Confirm Password
+- **Real-time Validation**: Setiap step divalidasi sebelum lanjut
+- **OTP Verification**: Email verification setelah registrasi
+- **Error Handling**: Comprehensive error messages
+
+#### Registration Steps:
+
+<Steps>
+  <Step title="Name Input">
+    Validasi: Tidak boleh kosong
+  </Step>
+  <Step title="Email Input">
+    Validasi: Format email yang valid
+  </Step>
+  <Step title="WhatsApp Input">
+    Validasi: Nomor WhatsApp tidak boleh kosong
+  </Step>
+  <Step title="Password Input">
+    Validasi: Minimal 6 karakter
+  </Step>
+  <Step title="Confirm Password">
+    Validasi: Harus sama dengan password
+  </Step>
+  <Step title="API Registration">
+    Call backend API untuk create account
+  </Step>
+  <Step title="Email Verification">
+    OTP verification via email
+  </Step>
+</Steps>
+
+#### Methods:
+
+<Accordion title="nextStep() & previousStep()">
+  ```dart
+  void nextStep()
+  void previousStep()
+  ```
+
+  **Fungsi:** Navigate between registration steps
+
+  - `nextStep()`: Validate current step → Move to next step
+  - `previousStep()`: Move back to previous step (clear errors)
+  - Auto-progression after successful validation
+</Accordion>
+
+<Accordion title="_validateCurrentStep()">
+  ```dart
+  bool _validateCurrentStep()
+  ```
+
+  **Validasi per step:**
+
+  - **Name**: Tidak boleh kosong
+  - **Email**: Format email valid (menggunakan GetX validator)
+  - **WhatsApp**: Tidak boleh kosong
+  - **Password**: Minimal 6 karakter
+  - **Confirm Password**: Harus match dengan password
+</Accordion>
+
+---
+
+### ForgotPasswordController
+
+**Path:** `lib/features/auth/controllers/forgot_password_controller.dart`
+
+Controller untuk mengelola proses reset password dengan OTP verification.
+
+#### Password Reset Flow:
+
+<Steps>
+  <Step title="Email Input">
+    User memasukkan email yang terdaftar
+  </Step>
+  <Step title="OTP Request">
+    Sistem mengirim OTP ke email user
+  </Step>
+  <Step title="OTP Verification">
+    User memasukkan kode OTP untuk verifikasi
+  </Step>
+  <Step title="New Password">
+    User memasukkan password baru dan konfirmasi
+  </Step>
+  <Step title="Password Update">
+    Password berhasil diperbarui di sistem
+  </Step>
+</Steps>
+
+#### Methods:
+
+<Accordion title="requestOTP()">
+  ```dart
+  Future<void> requestOTP() async
+  ```
+
+  **Flow:**
+
+  1. Call `OtpService.requestOtp()` dengan email dan type "reset"
+  2. Tampilkan loading state
+  3. Show success toast setelah OTP terkirim
+</Accordion>
+
+<Accordion title="verifyOTP()">
+  ```dart
+  Future<bool> verifyOTP() async
+  ```
+
+  **Flow:**
+
+  1. Call `OtpService.verifyOtp()` dengan email dan OTP
+  2. Jika valid → Move to next step (new password)
+  3. Jika invalid → Tampilkan error message
+</Accordion>
+
+<Accordion title="resetPassword()">
+  ```dart
+  Future<void> resetPassword() async
+  ```
+
+  **Flow:**
+
+  1. Call `OtpService.resetPassword()` dengan email dan password baru
+  2. Jika sukses → Navigate ke success screen
+  3. Jika gagal → Tampilkan error message
+</Accordion>
+
+---
+
+### LogoutController
+
+**Path:** `lib/features/auth/controllers/logout_controller.dart`
+
+Controller sederhana untuk mengelola proses logout dengan support multi-platform.
+
+#### Logout Flow:
+
+<Steps>
+  <Step title="Check Login Type">
+    Ambil login type dari SharedPreferences ('google' atau 'api')
+  </Step>
+  <Step title="Platform-Specific Logout">
+    - Google: Call `logoutFromGoogle()`
+    - API: Call `logoutFromAPI()`
+  </Step>
+  <Step title="Clear Local Data">
+    Hapus semua data dari SharedPreferences
+  </Step>
+  <Step title="Reset Controllers">
+    Clear semua GetX controllers
+  </Step>
+</Steps>
+
+---
+
+## 🔧 Services
+
+### AuthService
+
+**Path:** `lib/features/auth/services/auth_service.dart`
+
+Service utama untuk komunikasi dengan backend API untuk operasi autentikasi.
+
+#### Methods:
+
+<Accordion title="registerUser()">
+  ```dart
+  Future<Map<String, dynamic>?> registerUser(
+    String name,
+    String email, 
+    String password,
+    String whatsapp,
+  ) async
+  ```
+
+  **Endpoint:** `POST /api/register`
+
+  **Body:**
+
+  ```json
+  {
+    "name": "string",
+    "email": "string", 
+    "password": "string",
+    "whatsapp": "string"
+  }
+  ```
+
+  **Response Handling:**
+
+  - Status 200 → Return response data
+  - Error → Return error object dengan message
+</Accordion>
+
+<Accordion title="connectApi()">
+  ```dart
+  Future<LoginModel?> connectApi(String email, String password) async
+  ```
+
+  **Endpoint:** `POST /api/login`
+
+  **Body:**
+
+  ```json
+  {
+    "email": "string",
+    "password": "string"
+  }
+  ```
+
+  **Success Flow:**
+
+  1. Parse response ke `LoginModel`
+  2. Simpan token ke SharedPreferences
+  3. Simpan user data (id, username, role, photo, email)
+  4. Simpan group_id dan room_id jika ada
+  5. Return LoginModel object
+
+  **Error Handling:**
+
+  - Parse error messages dari backend
+  - Handle DioException dengan proper error messages
+</Accordion>
+
+<Accordion title="logoutFromAPI()">
+  ```dart
+  Future<void> logoutFromAPI() async
+  ```
+
+  **Endpoint:** `POST /api/logout`
+
+  **Headers:**
+
+  ```json
+  {
+    "token": "user_access_token"
+  }
+  ```
+
+  **Success Flow:**
+
+  1. Call logout endpoint dengan token
+  2. Clear semua SharedPreferences data
+  3. Clear Dio interceptors
+  4. Delete semua GetX controllers
+</Accordion>
+
+<Accordion title="logoutFromGoogle()">
+  ```dart
+  Future<void> logoutFromGoogle() async
+  ```
+
+  **Google Logout Flow:**
+
+  1. Disconnect Google account (clear cache)
+  2. Sign out dari Google
+  3. Clear Google token dari local storage
+  4. Force user to select account pada login berikutnya
+</Accordion>
+
+---
+
+### GoogleAuthService
+
+**Path:** `lib/features/auth/services/google_auth_service.dart`
+
+Service khusus untuk Google OAuth2 authentication.
+
+#### Methods:
+
+<Accordion title="loginWithGoogle()">
+  ```dart
+  Future<LoginModel?> loginWithGoogle(String idToken) async
+  ```
+
+  **Endpoint:** `POST /api/login/google`
+
+  **Body:**
+
+  ```json
+  {
+    "idToken": "google_id_token"
+  }
+  ```
+
+  **Flow:**
+
+  1. Kirim Google idToken ke backend
+  2. Backend verifikasi token dengan Google
+  3. Parse response ke LoginModel
+  4. Simpan user data sama seperti login regular
+  5. Handle group_id dan room_id jika user sudah tergabung
+
+  **Token Storage:**
+
+  - Access token untuk API calls
+  - User profile info (id, username, role, photo, email)
+  - Group membership info
+  - Room assignment info
+</Accordion>
+
+---
+
+### OtpService
+
+**Path:** `lib/features/auth/services/otp_service.dart`
+
+Service untuk mengelola OTP (One-Time Password) operations.
+
+#### Methods:
+
+<Accordion title="requestOtp()">
+  ```dart
+  static Future<Map<String, dynamic>> requestOtp(String email, String type) async
+  ```
+
+  **Endpoint:** `POST /api/email/request-otp`
+
+  **Body:**
+
+  ```json
+  {
+    "email": "string",
+    "type": "register|reset"
+  }
+  ```
+
+  **Types:**
+
+  - `"register"`: OTP untuk verifikasi email saat registrasi
+  - `"reset"`: OTP untuk reset password
+</Accordion>
+
+<Accordion title="verifyOtp()">
+  ```dart
+  static Future<Map<String, dynamic>> verifyOtp(String email, String otp) async
+  ```
+
+  **Endpoint:** `POST /api/email/verify-otp`
+
+  **Body:**
+
+  ```json
+  {
+    "email": "string",
+    "otp": "string"
+  }
+  ```
+
+  **Success Response:**
+
+  ```json
+  {
+    "message": "OTP valid"
+  }
+  ```
+</Accordion>
+
+<Accordion title="resetPassword()">
+  ```dart
+  static Future<Map<String, dynamic>> resetPassword(String email, String newPassword) async
+  ```
+
+  **Endpoint:** `POST /api/auth/reset-password`
+
+  **Body:**
+
+  ```json
+  {
+    "email": "string",
+    "newPassword": "string"
+  }
+  ```
+
+  **Success Response:**
+
+  ```json
+  {
+    "message": "Password updated successfully"
+  }
+  ```
+</Accordion>
+
+---
+
+## 💾 Data Storage
+
+### SharedPreferencesService
+
+Service untuk mengelola penyimpanan data lokal menggunakan SharedPreferences.
+
+#### Stored Data:
+
+<Accordion title="Authentication Tokens">
+  ```dart
+  // Token untuk API authentication
+  await SharedPreferencesService.simpanToken(String token)
+  String? token = await SharedPreferencesService.getToken()
+  ```
+</Accordion>
+
+<Accordion title="User Profile Data">
+  ```dart
+  // User profile information
+  await SharedPreferencesService.saveIdRoleUser(
+    String id,
+    String username, 
+    String role,
+    String? photo,
+    String email,
+  )
+  ```
+</Accordion>
+
+<Accordion title="Group & Room Info">
+  ```dart
+  // Group membership
+  await SharedPreferencesService.saveGroupId(String groupId)
+  
+  // Room assignment  
+  await SharedPreferencesService.saveRoomid(String roomId)
+  ```
+</Accordion>
+
+<Accordion title="Login Type Tracking">
+  ```dart
+  // Track login method for proper logout
+  await SharedPreferencesService.saveLoginType('google' | 'api')
+  String? loginType = await SharedPreferencesService.getLoginType()
+  ```
+</Accordion>
+
+---
+
+## 🔒 Security Features
+
+### Token Management
+
+- JWT tokens disimpan secara aman di SharedPreferences
+- Token automatically included di API headers
+- Token validation pada setiap API call
+- Automatic token cleanup saat logout
+
+### Password Security
+
+- Minimum 6 karakter untuk password
+- Password confirmation validation
+- Secure password reset via OTP
+- No password storage di local storage
+
+### Session Management
+
+- Login type tracking untuk proper logout flow
+- Automatic session cleanup
+- Multi-platform logout support (Google \+ API)
+
+### OTP Security
+
+- Time-limited OTP codes
+- Email-based delivery
+- Separate OTP types untuk berbeda use cases
+- OTP validation sebelum sensitive operations
+
+---
+
+## 🚀 Usage Examples
+
+### Basic Login
+
+```dart
+final loginController = Get.find<LoginController>();
+
+// Email/Password login
+await loginController.login('user@example.com', 'password123');
+
+// Google login  
+await loginController.signInWithGoogle();
+```
+
+### Registration Flow
+
+```dart
+final registerController = Get.find<RegisterController>();
+
+// Fill registration data
+registerController.nameController.text = 'John Doe';
+registerController.emailController.text = 'john@example.com';
+registerController.passwordController.text = 'password123';
+registerController.whatsappController.text = '08123456789';
+
+// Process through steps
+registerController.nextStep(); // Validate and move to next step
+```
+
+### Forgot Password
+
+```dart
+final forgotController = Get.find<ForgotPasswordController>();
+
+// Step 1: Request OTP
+forgotController.emailController.text = 'user@example.com';
+await forgotController.requestOTP();
+
+// Step 2: Verify OTP
+forgotController.otpController.text = '123456';
+await forgotController.verifyOTP();
+
+// Step 3: Reset password
+forgotController.passwordController.text = 'newpassword123';
+await forgotController.resetPassword();
+```
+
+### Logout
+
+```dart
+final logoutController = Get.find<LogoutController>();
+await logoutController.logout(); // Handles both Google and API logout
+```
+
+---
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+```env
+# Google OAuth2 Configuration
+GOOGLE_CLIENT_ID=your_google_client_id_here
+```
+
+### API Endpoints
+
+Semua endpoint didefinisikan di `lib/core/services/endpoints.dart`:
+
+```dart
+class Endpoints {
+  static const String baseUrl2 = 'https://api.maqdisconnect.com';
+  static const String loginUrl = '/api/login';
+  static const String registerUrl = '/api/register';
+  static const String logoutUrl = '/api/logout';
+  static const String loginGoogle = '/api/login/google';
+}
+```
+
+### Dependencies
+
+- `dio`: HTTP client untuk API calls
+- `get`: State management dan dependency injection
+- `google_sign_in`: Google OAuth2 integration
+- `shared_preferences`: Local data storage
+- `fluttertoast`: User notifications
+- `flutter_dotenv`: Environment variable management
+
+---
+
+## 🧪 Testing
+
+### Unit Tests
+
+```dart
+// Test login controller
+testWidgets('Login with valid credentials', (WidgetTester tester) async {
+  final controller = LoginController();
+  await controller.login('test@example.com', 'password123');
+  expect(controller.loginStatus.value, true);
+});
+```
+
+### Integration Tests
+
+- End-to-end registration flow
+- Google Sign-In integration
+- OTP verification process
+- Password reset functionality
+
+---
+
+## 📋 Error Handling
+
+### Common Error Messages
+
+- `"Email atau Kata sandi salah!"` - Invalid credentials
+- `"Akun belum diverifikasi"` - Account needs email verification
+- `"OTP tidak valid"` - Invalid OTP code
+- `"Password minimal 6 karakter"` - Password too short
+- `"Konfirmasi password tidak sesuai"` - Password mismatch
+
+### Error Recovery
+
+- Automatic retry untuk network failures
+- User-friendly error messages
+- Proper validation feedback
+- Graceful fallback options
+
+---
+
+## 🔄 State Management
+
+### Reactive Variables (Rx)
+
+```dart
+// Loading states
+RxBool isLoading = false.obs;
+
+// Error handling
+RxString errorMessage = ''.obs;
+
+// Authentication status
+RxBool loginStatus = false.obs;
+
+// Form validation
+RxBool isAttemptedLogin = false.obs;
+```
+
+### Controller Lifecycle
+
+- `onInit()`: Setup initial state
+- `onReady()`: Post-initialization setup
+- `onClose()`: Cleanup resources (dispose controllers)
+
+---
+
+## 📱 Platform Support
+
+### Android
+
+- Google Sign-In configuration in `android/app/build.gradle`
+- Proper permissions for internet access
+- Deep linking support untuk OAuth redirects
+
+### iOS
+
+- Google Sign-In configuration in `ios/Runner/Info.plist`
+- URL schemes setup untuk OAuth
+- Keychain integration untuk secure storage
+
+### Web
+
+- Google Sign-In JavaScript SDK integration
+- CORS configuration untuk API calls
+- Session storage fallback
+
+---
+
+## 🔗 Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="API Documentation" icon="code" href="/api/auth">
+    Detailed backend API specifications
+  </Card>
+  <Card title="UI Components" icon="palette" href="/components/auth">
+    Authentication UI widgets documentation
+  </Card>
+  <Card title="Group Management" icon="users" href="/features/group">
+    Group-related authentication flows
+  </Card>
+  <Card title="Profile Management" icon="user" href="/features/profile">
+    User profile and account management
+  </Card>
+</CardGroup>
+
+---
+
+<Info>
+  **Note:** Dokumentasi ini mencakup semua aspek dari modul autentikasi. Untuk pertanyaan teknis atau bug reports, silakan hubungi tim development.
+</Info>

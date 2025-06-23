@@ -1,4 +1,1403 @@
 ---
-title: "Group"
-description: "Description of your new file."
+title: "Group Management Module"
+description: "Dokumentasi lengkap untuk fitur manajemen grup, real-time progress tracking, dan sistem polling di aplikasi Maqdis Connect"
+icon: "users"
 ---
+
+# Group Management Module
+
+Modul grup menyediakan sistem manajemen grup yang komprehensif dengan fitur real-time progress tracking, polling, user management, audio room integration, dan WhatsApp connectivity untuk pengalaman jamaah yang terhubung.
+
+## 🏗️ Arsitektur
+
+```
+lib/features/group/
+├── controllers/          # Business logic & state management
+│   ├── group_controller.dart           # Core group management
+│   ├── group_list_controller.dart      # Group listing & browsing
+│   ├── perjalanan_controller.dart      # Journey/trip management
+│   ├── waiting_polls_controller.dart   # Real-time polling system
+│   ├── user_status_controller.dart     # User online/offline status
+│   ├── get_list_group_controller.dart  # Group list fetching
+│   └── whatsapp_controller.dart        # WhatsApp integration
+├── services/            # API services & data layer
+│   ├── group_service.dart              # Group CRUD operations
+│   ├── live_progress_service.dart      # Real-time progress tracking
+│   └── perjalanan_service.dart         # Journey management API
+├── models/              # Data structures
+│   ├── check_group_model.dart          # Group data models
+│   ├── check_user_in_group.dart        # User membership models
+│   ├── live_progress_model.dart        # Progress tracking models
+│   ├── check_user_group_model.dart     # User group validation
+│   ├── generate_room_code.dart         # Audio room integration
+│   └── get_list_group_model.dart       # Group listing models
+├── views/               # UI screens
+│   ├── group_waiting_screen.dart       # Main waiting room
+│   ├── group_list_screen_new.dart      # Group selection
+│   └── responsive/                     # Responsive layouts
+├── widgets/             # Reusable components
+│   ├── build_action_button.dart        # Role-based action buttons
+│   ├── build_user_avatar.dart          # User profile displays
+│   ├── build_role_based_content.dart   # Dynamic content by role
+│   ├── share_bottom_sheet.dart         # Group sharing interface
+│   ├── kode_join_grup.dart             # Join code display
+│   ├── group_list_view_body.dart       # Group list UI
+│   └── dialog_*.dart                   # Various dialog components
+├── bindings/            # Dependency injection
+│   └── group_waiting_binding.dart
+└── lazy_loader/         # Loading states
+    ├── skeleton_load_peserta.dart
+    ├── build_role_based_content_loader.dart
+    └── waiting_screen_loader.dart
+```
+
+## 🎯 Fitur Utama
+
+<CardGroup cols={2}>
+  <Card title="Real-time Group Management" icon="users-gear">
+    - Live user tracking dengan polling
+    - Role-based permissions (Ustadz/User)
+    - Join/leave group functionality
+    - Group status monitoring
+  </Card>
+  
+  <Card title="Live Progress Tracking" icon="chart-line">
+    - Real-time journey progress
+    - Automatic status updates
+    - Live session detection
+    - Progress completion tracking
+  </Card>
+  
+  <Card title="Audio Room Integration" icon="headphones">
+    - Seamless audio room transitions
+    - Room code generation
+    - Token-based authentication
+    - Live session redirection
+  </Card>
+  
+  <Card title="Smart Polling System" icon="satellite-dish">
+    - 5-second interval polling
+    - Background/foreground handling
+    - Memory efficient updates
+    - Connection state awareness
+  </Card>
+</CardGroup>
+
+---
+
+## 🎮 Controllers
+
+### GroupController
+
+**Path:** `lib/features/group/controllers/group_controller.dart`
+
+Controller utama untuk manajemen grup dengan fitur real-time polling, user management, dan audio room integration.
+
+#### Key Features:
+- **Real-time User Tracking**: Polling setiap 5 detik untuk update user list
+- **Role Management**: Handle permissions berdasarkan role (ustadz/user)
+- **Group Operations**: Join, leave, create, dan manage group
+- **Audio Room Integration**: Seamless transition ke audio room
+
+#### Properties:
+
+<Accordion title="Reactive Variables">
+```dart
+RxList<CheckUserInGroupModel> groupUsers = <CheckUserInGroupModel>[].obs;  // Live user list
+RxBool isLoading = false.obs;                    // Loading states
+RxString role = ''.obs;                          // User role (ustadz/user)
+RxList<GroupModel> data = <GroupModel>[].obs;    // Group list data
+RxBool isLive = false.obs;                       // Live session status
+RxString groupName = ''.obs;                     // Current group name
+var tokenSpeaker = RxnString();                  // Audio room token
+var roomCode = Rxn<RoomCodeModel>();             // Room code untuk audio
+```
+</Accordion>
+
+#### Core Methods:
+
+<Accordion title="startPolling() & stopPolling()">
+```dart
+void startPolling() {
+  _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+    fetchGroupUsers(isPolling: true);
+  });
+}
+
+void stopPolling() {
+  if (_pollingTimer != null && _pollingTimer!.isActive) {
+    _pollingTimer!.cancel();
+    _pollingTimer = null;
+  }
+}
+```
+
+**Polling System:**
+- **5-second Intervals**: Regular updates untuk real-time experience
+- **Memory Efficient**: Hanya update data tanpa show loading saat polling
+- **Lifecycle Aware**: Auto-stop saat controller di-dispose
+- **Background Handling**: Pause/resume berdasarkan app lifecycle
+</Accordion>
+
+<Accordion title="fetchGroupUsers()">
+```dart
+Future<void> fetchGroupUsers({bool isPolling = false}) async {
+  if (!isPolling) {
+    isLoading.value = true; // Show loading hanya saat fetch pertama
+  }
+
+  try {
+    final grupid = await SharedPreferencesService.getGroupId();
+    final response = await GroupService().fetchGroupUsers(grupid);
+    
+    groupUsers.assignAll(response.users);
+    
+    if (response.roomId != null) {
+      await SharedPreferencesService.saveRoomid(response.roomId ?? '');
+    }
+  } catch (e) {
+    print('Error fetching group users: $e');
+  } finally {
+    if (!isPolling) {
+      isLoading.value = false;
+    }
+  }
+}
+```
+
+**Features:**
+- **Smart Loading**: Loading indicator hanya untuk fetch pertama
+- **Room ID Management**: Auto-save room ID untuk audio integration
+- **Error Handling**: Graceful error management tanpa crash
+- **Real-time Updates**: Update user list secara real-time
+</Accordion>
+
+<Accordion title="joinGrup()">
+```dart
+Future<bool> joinGrup(String grupId, String grupName) async {
+  loadVisibleJoinGrup.value = true;
+  isJoinButtonVisible.value = false;
+
+  // Reset status perjalanan sebelum join grup baru
+  if (Get.isRegistered<PerjalananController>()) {
+    final perjalananController = Get.find<PerjalananController>();
+    perjalananController.statusMap.clear();
+    perjalananController.statusMap.refresh();
+  }
+
+  try {
+    final success = await GroupService().joinGrup(grupId);
+    if (success) {
+      await SharedPreferencesService.saveGroupId(grupId);
+      await SharedPreferencesService.saveGroupName(grupName);
+      Get.snackbar('Berhasil', 'Anda berhasil bergabung dengan grup.');
+      return true;
+    }
+  } catch (e) {
+    Get.snackbar('Error', 'Terjadi kesalahan: $e');
+    return false;
+  }
+}
+```
+
+**Join Process:**
+- **State Management**: Loading states dan button visibility
+- **Data Reset**: Clear previous journey status
+- **Persistent Storage**: Save group data ke SharedPreferences
+- **User Feedback**: Snackbar notifications untuk result
+</Accordion>
+
+---
+
+### PerjalananController
+
+**Path:** `lib/features/group/controllers/perjalanan_controller.dart`
+
+Controller untuk manajemen perjalanan dengan status tracking dan live progress monitoring.
+
+#### Features:
+
+<Accordion title="Journey Status Management">
+```dart
+var statusMap = <String, bool>{}.obs;  // Track completion status
+
+Future<void> cekStatusPerjalananByGroupId() async {
+  try {
+    final perjalananList = await _cekLive.getCekStatusPerjalananByGroupId();
+    Map<String, bool> tempStatusMap = {};
+
+    for (var perjalanan in perjalananList) {
+      tempStatusMap[perjalanan['jenis_perjalanan'].toLowerCase()] =
+          perjalanan['is_finished'];
+    }
+
+    statusMap.value = tempStatusMap;
+    statusMap.refresh();
+  } catch (e) {
+    print("Error fetch status perjalanan: $e");
+  }
+}
+```
+
+**Status Tracking:**
+- **Real-time Status**: Track completion untuk setiap jenis perjalanan
+- **Observable Map**: Reactive updates untuk UI
+- **Group-based**: Status per grup ID
+- **Auto-refresh**: Update UI saat status berubah
+</Accordion>
+
+<Accordion title="Progress Posting & Live Detection">
+```dart
+Future<void> postProgress(String perjalananId) async {
+  Get.dialog(Container(
+    color: Colors.black.withOpacity(0.5),
+    child: const Center(child: WEnumLoadingAnim()),
+  ), barrierDismissible: false);
+
+  final response = await _apiService.postProgress(perjalananId);
+
+  if (response['data']['live'] == 1) {
+    isLive.value = true;
+    // Auto-redirect semua anggota grup ke audio room
+  }
+
+  if (Get.isDialogOpen == true) {
+    Get.back();
+  }
+  Fluttertoast.showToast(msg: 'Progress Dimulai');
+}
+```
+
+**Live Progress Features:**
+- **Loading Dialog**: Full-screen loading saat post progress
+- **Live Detection**: Auto-detect saat session jadi live
+- **Group Sync**: Semua anggota grup auto-redirect ke audio room
+- **User Feedback**: Toast notifications untuk status updates
+</Accordion>
+
+---
+
+### WaitingPollsController
+
+**Path:** `lib/features/group/controllers/waiting_polls_controller.dart`
+
+Specialized controller untuk real-time live session monitoring dan auto-redirect functionality.
+
+<Accordion title="Live Session Polling">
+```dart
+void startCekLiveTimer() {
+  isPollingActive.value = true;
+  
+  _pollingTimer = Timer.periodic(pollingInterval, (_) {
+    _cekLive();
+  });
+}
+
+Future<void> _cekLive() async {
+  final currentGroupId = await SharedPreferencesService.getGroupId();
+  final cekLiveResponse = await _liveProgressServices.getCekLive();
+
+  final matchingData = cekLiveResponse.data.firstWhereOrNull(
+      (item) => item.grupId == currentGroupId && item.live == 1);
+
+  if (matchingData != null) {
+    stopCekLiveTimer();
+    _groupController?.stopPolling();
+    
+    isLoading.value = true;
+    await Future.delayed(const Duration(seconds: 2));
+    
+    Future.microtask(() {
+      isLoading.value = false;
+      if (Get.currentRoute != '/audioRoomScreen') {
+        Get.offAllNamed('/audioRoomScreen');
+      }
+    });
+  }
+}
+```
+
+**Live Monitoring Features:**
+- **5-second Polling**: Continuous check untuk live sessions
+- **Group Matching**: Filter berdasarkan current group ID
+- **Auto-redirect**: Seamless transition ke audio room
+- **Duplicate Prevention**: Check current route untuk avoid double navigation
+- **Resource Management**: Stop polling saat live session detected
+</Accordion>
+
+---
+
+### UserStatusController
+
+**Path:** `lib/features/group/controllers/user_status_controller.dart`
+
+Controller untuk manajemen status online/offline user dalam grup.
+
+<Accordion title="Status Management">
+```dart
+RxMap<String, bool> userStatusMap = <String, bool>{}.obs;
+
+Future<void> setStatusOnline() async {
+  final userId = await getUserId();
+  final success = await GroupService().setStatusOnline();
+  if (success) {
+    userStatusMap[userId] = true;
+    print('Status $userId telah diperbarui menjadi Online.');
+  }
+}
+
+Future<void> setStatusOffline() async {
+  final userId = await getUserId();
+  final success = await GroupService().setStatusOffline();
+  if (success) {
+    userStatusMap[userId] = false;
+    print('Status $userId telah diperbarui menjadi Offline.');
+  }
+}
+```
+
+**Status Features:**
+- **User-based Tracking**: Status per user ID
+- **Observable Map**: Reactive status updates
+- **API Integration**: Sync dengan backend
+- **Automatic Management**: Set online saat masuk grup, offline saat keluar
+</Accordion>
+
+---
+
+## 🔧 Services
+
+### GroupService
+
+**Path:** `lib/features/group/services/group_service.dart`
+
+Service layer utama untuk semua operasi grup dengan comprehensive API management.
+
+#### Core Operations:
+
+<Accordion title="Group CRUD Operations">
+```dart
+Future<List<GroupModel>?> getGrup() async {
+  const url = Endpoints.baseUrl2 + Endpoints.getGrup;
+  
+  final response = await _dio.get(url);
+  
+  if (response.statusCode == 200) {
+    final data = response.data;
+    if (data is List) {
+      return data.map((grup) => GroupModel.fromJson(grup)).toList();
+    }
+  }
+  return null;
+}
+
+Future<bool> joinGrup(String grupId) async {
+  final token = await SharedPreferencesService.getToken();
+  final userId = await SharedPreferencesService.getIdUser();
+  
+  const url = Endpoints.baseUrl2 + Endpoints.joinGrup;
+  
+  final response = await _dio.post(
+    url,
+    options: Options(headers: {'token': token}),
+    queryParameters: {'userId': userId},
+    data: {'grupid': grupId},
+  );
+  
+  return response.statusCode == 200;
+}
+```
+
+**CRUD Features:**
+- **Type Safety**: Validate response data types
+- **Error Handling**: Comprehensive error management
+- **Authentication**: Token-based API calls
+- **Data Mapping**: Automatic model conversion
+</Accordion>
+
+<Accordion title="User Management">
+```dart
+Future<CheckUserInGroupResponse> fetchGroupUsers(String grupid) async {
+  final response = await _dio.get(
+    Endpoints.baseUrl2 + Endpoints.getPesertaGroup,
+    queryParameters: {'grupid': grupid},
+  );
+
+  if (response.data is Map && response.data['data'] is List) {
+    return CheckUserInGroupResponse.fromJson(response.data);
+  } else {
+    throw Exception('Invalid API response format');
+  }
+}
+
+Future<bool> setStatusOnline() async {
+  // API call untuk set user status online
+}
+
+Future<bool> setStatusOffline() async {
+  // API call untuk set user status offline  
+}
+```
+
+**User Management Features:**
+- **Group Membership**: Fetch users dalam grup tertentu
+- **Status Updates**: Online/offline status management
+- **Room Integration**: Return room ID untuk audio features
+- **Real-time Sync**: Support untuk polling updates
+</Accordion>
+
+<Accordion title="Room Code Management">
+```dart
+Future<RoomCodeModel> fetchRoomCode() async {
+  final token = await SharedPreferencesService.getToken();
+  final roomId = await SharedPreferencesService.getRoomid();
+  
+  if (token == null || roomId == null) {
+    throw Exception('Token atau roomId tidak ditemukan');
+  }
+  
+  // Generate room code untuk audio session
+  final response = await _dio.post(
+    Endpoints.baseUrl2 + Endpoints.generateRoomCode,
+    data: {'roomId': roomId},
+    options: Options(headers: {'token': token}),
+  );
+  
+  return RoomCodeModel.fromJson(response.data);
+}
+```
+
+**Audio Integration:**
+- **Room Code Generation**: Create unique codes untuk audio sessions
+- **Token Management**: Handle speaker/listener tokens
+- **Security**: Validate user permissions sebelum generate codes
+</Accordion>
+
+---
+
+### LiveProgressService
+
+**Path:** `lib/features/group/services/live_progress_service.dart`
+
+Advanced service untuk real-time progress tracking dan live session management.
+
+<Accordion title="Live Session Detection">
+```dart
+Future<LiveProgressModelResponse> getCekLive() async {
+  const String url = Endpoints.baseUrl2 + Endpoints.liveProgress;
+  
+  final token = await SharedPreferencesService.getToken();
+  final response = await _dio.get(
+    url,
+    options: Options(headers: {
+      'Authorization': 'Bearer $token',
+      'token': token,
+    }),
+  );
+
+  if (response.statusCode == 200) {
+    if (response.data['msg'] == 'Tidak ada progress live') {
+      return LiveProgressModelResponse(
+        status: false,
+        data: [],
+        message: 'Tidak ada progress live yang sedang berjalan'
+      );
+    }
+
+    final liveProgressResponse = LiveProgressModelResponse.fromJson(response.data);
+    
+    // Filter data dengan live == 1
+    final liveData = liveProgressResponse.data
+        .where((item) => item.live == 1)
+        .toList();
+
+    if (liveData.isNotEmpty) {
+      final idProgress = liveData[0].progressId;
+      await RoomDataSharedPreferenceService.saveProgressPerjalananId(idProgress);
+    }
+
+    return liveProgressResponse;
+  }
+}
+```
+
+**Live Detection Features:**
+- **Real-time Monitoring**: Continuous live session checking
+- **Smart Filtering**: Hanya process data dengan live status
+- **Data Persistence**: Auto-save progress ID untuk tracking
+- **Error Handling**: Handle various API response scenarios
+</Accordion>
+
+<Accordion title="Progress Status Tracking">
+```dart
+Future<List<Map<String, dynamic>>> getCekStatusPerjalananByGroupId() async {
+  final groupId = await SharedPreferencesService.getGroupId();
+  final url = '${Endpoints.baseUrl2}api/Group/getStatusPerjalanan/$groupId';
+
+  final response = await _dio.get(url);
+
+  if (response.statusCode == 200) {
+    final List<dynamic> responseData = response.data['data'];
+    return responseData.cast<Map<String, dynamic>>();
+  }
+  return [];
+}
+
+Future<bool> finishProgress() async {
+  final progressId = await RoomDataSharedPreferenceService.getProgressPerjalananId();
+  final token = await SharedPreferencesService.getToken();
+  
+  final response = await _dio.put(
+    '${Endpoints.baseUrl2}api/progress',
+    data: {'progressid': progressId},
+  );
+  
+  return response.statusCode == 200;
+}
+```
+
+**Progress Management:**
+- **Group-based Status**: Track progress per group ID
+- **Completion Tracking**: Mark progress sebagai finished
+- **Persistent Storage**: Use SharedPreferences untuk progress ID
+- **API Synchronization**: Sync local state dengan backend
+</Accordion>
+
+---
+
+### PerjalananService
+
+**Path:** `lib/features/group/services/perjalanan_service.dart`
+
+Service untuk manajemen perjalanan dan journey progress dengan local storage integration.
+
+<Accordion title="Journey Data Management">
+```dart
+Future<List<PerjalananModel>> getPerjalanan() async {
+  final response = await _dio.get('${Endpoints.baseUrl2}api/perjalanan');
+
+  if (response.statusCode == 200 && response.data['data'] != null) {
+    List<PerjalananModel> perjalananModels = (response.data['data'] as List)
+        .map((data) => PerjalananModel.fromJson(data))
+        .toList();
+
+    // Auto-save berdasarkan kategori
+    for (var perjalanan in perjalananModels) {
+      if (perjalanan.namaPerjalanan != null) {
+        if (perjalanan.namaPerjalanan!.contains('Manasik')) {
+          await SharedPreferencesService.savePerjalananManasik(
+            perjalanan.perjalananId,
+            perjalanan.namaPerjalanan ?? 'Unnamed Trip',
+          );
+        } else if (perjalanan.namaPerjalanan!.contains('Umroh')) {
+          await SharedPreferencesService.savePerjalananUmroh(
+            perjalanan.perjalananId,
+            perjalanan.namaPerjalanan ?? 'Unnamed Trip',
+          );
+        }
+      }
+    }
+
+    return perjalananModels;
+  }
+}
+```
+
+**Journey Features:**
+- **Categorized Storage**: Auto-save berdasarkan jenis perjalanan
+- **Local Caching**: Persistent storage untuk offline access
+- **Type Classification**: Smart categorization (Manasik, Umroh, Towafwada)
+</Accordion>
+
+<Accordion title="Progress Posting">
+```dart
+Future<Map<String, dynamic>> postProgress(String perjalananId) async {
+  final token = await SharedPreferencesService.getToken();
+  final grupId = await SharedPreferencesService.getGroupId();
+  
+  Map<String, dynamic> body = {
+    'grupid': grupId,
+    'perjalananid': perjalananId,
+  };
+
+  final response = await _dio.post(
+    '${Endpoints.baseUrl2}api/progress',
+    data: body,
+    options: Options(headers: {'token': token}),
+  );
+
+  if (response.statusCode == 200) {
+    return response.data; // Contains live status info
+  }
+}
+```
+
+**Progress Features:**
+- **Group Integration**: Link progress dengan group ID
+- **Live Status**: Return info apakah session jadi live
+- **Token Authentication**: Secure API calls
+</Accordion>
+
+---
+
+## 📊 Models & Data Structures
+
+### GroupModel & Room
+
+**Path:** `lib/features/group/models/check_group_model.dart`
+
+<Accordion title="Group Data Structure">
+```dart
+class GroupModel {
+  final String grupid;
+  final String namaGrup;
+  final String createdBy;
+  final DateTime createdAt;
+  final DateTime? finishAt;
+  final int openUser;
+  final String status;
+  final String userId;
+  final String? joinCode;
+  final String? roomId;
+  final Room? room;
+}
+
+class Room {
+  final String id;
+  final String namaRoom;
+  final String tokenSpeaker;
+  final String tokenListener;
+}
+```
+
+**Model Features:**
+- **Complete Group Info**: Comprehensive group metadata
+- **Audio Integration**: Room tokens untuk speaker/listener
+- **Join Code System**: Unique codes untuk group joining
+- **Temporal Data**: Created/finish timestamps
+- **User Limits**: Open user count tracking
+</Accordion>
+
+### CheckUserInGroupModel
+
+**Path:** `lib/features/group/models/check_user_in_group.dart`
+
+<Accordion title="User Membership Structure">
+```dart
+class CheckUserInGroupModel {
+  final String userId;
+  final String name;
+  final String role;        // ustadz/user
+  final String email;
+  final String whatsapp;
+  final String photo;
+  final String online;      // online status
+}
+
+class CheckUserInGroupResponse {
+  final String? roomId;
+  final List<CheckUserInGroupModel> users;
+}
+```
+
+**User Features:**
+- **Role-based Data**: Ustadz vs User permissions
+- **Contact Info**: WhatsApp integration support
+- **Online Status**: Real-time presence tracking
+- **Profile Data**: Photo dan personal info
+- **Room Association**: Link users dengan audio room
+</Accordion>
+
+### LiveProgressModel
+
+**Path:** `lib/features/group/models/live_progress_model.dart`
+
+<Accordion title="Progress Tracking Structure">
+```dart
+class LiveProgressModel {
+  final String progressId;
+  final String grupId;
+  final String jenisPerjalanan;
+  final String perjalananId;
+  final int live;           // 0 = not live, 1 = live
+  final bool status;
+  final bool isFinished;
+}
+
+class LiveProgressModelResponse {
+  final bool status;
+  final String message;
+  final List<LiveProgressModel> data;
+}
+```
+
+**Progress Features:**
+- **Live Status Tracking**: Real-time live session detection
+- **Journey Association**: Link dengan specific perjalanan
+- **Completion Status**: Track finished state
+- **Group Context**: Progress dalam context grup tertentu
+</Accordion>
+
+---
+
+## 🎨 Views & UI Components
+
+### GroupWaitingScreen
+
+**Path:** `lib/features/group/views/group_waiting_screen.dart`
+
+Main waiting room screen dengan role-based UI dan real-time updates.
+
+<Accordion title="Screen Architecture">
+```dart
+class GroupWaitingScreen extends StatefulWidget with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    
+    // Initialize controllers
+    userStatusController = Get.put(UserStatusController());
+    Get.put(WaitingPollsController());
+    
+    // Set online status
+    userStatusController.setStatusOnline();
+    
+    // Start real-time monitoring
+    WidgetsBinding.instance.addObserver(this);
+    
+    // Lifecycle-aware setup
+    _groupController.isWaitingScreenActive.value = true;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final controller = Get.find<WaitingPollsController>();
+    if (state == AppLifecycleState.paused) {
+      controller.stopCekLiveTimer();
+      _groupController.stopPolling();
+    } else if (state == AppLifecycleState.resumed) {
+      controller.startCekLiveTimer();
+      _groupController.startPolling();
+    }
+  }
+}
+```
+
+**Lifecycle Features:**
+- **Observer Pattern**: Monitor app lifecycle untuk efficient polling
+- **Auto Status Management**: Set online saat masuk, offline saat keluar
+- **Resource Management**: Stop polling saat app di-background
+- **Real-time Setup**: Initialize semua polling controllers
+</Accordion>
+
+<Accordion title="Role-based UI">
+```dart
+Obx(() {
+  if (_groupController.role.value == 'ustadz') {
+    return BuildRoleBasedContent(
+      perjalananController: perjalananController,
+      onPressedBack: () => back(),
+    );
+  } else if (_groupController.role.value == 'user') {
+    return Column(
+      children: [
+        Row([
+          Text('Menunggu pembimbing'),
+          WLoadingAnimation(color: GlobalColors.mainColor),
+        ]),
+        WCustomButton(
+          onPressed: () => back(),
+          buttonText: 'Kembali',
+        ),
+      ],
+    );
+  } else {
+    return Container(
+      color: Colors.black.withOpacity(0.5),
+      child: const Center(child: WEnumLoadingAnim())
+    );
+  }
+})
+```
+
+**Role Features:**
+- **Dynamic UI**: Different interface untuk ustadz vs user
+- **Ustadz Controls**: Journey progress controls dan group management
+- **User Experience**: Simple waiting interface dengan loading animation
+- **Loading States**: Graceful loading saat role belum determined
+</Accordion>
+
+### GroupListScreenNew
+
+**Path:** `lib/features/group/views/group_list_screen_new.dart`
+
+<Accordion title="Responsive Group Browser">
+```dart
+LayoutBuilder(builder: (context, constraints) {
+  double width = constraints.maxWidth;
+  return width > 1000
+      ? GroupListDesktopScreen(controller: controller)
+      : GroupListMobileScreen(controller: controller);
+})
+```
+
+**Responsive Features:**
+- **Breakpoint-based**: 1000px breakpoint untuk desktop/mobile
+- **Optimized Layouts**: Different UI patterns untuk each form factor
+- **Shared Controller**: Same business logic across layouts
+</Accordion>
+
+---
+
+## 🧩 Widgets & Components
+
+### BuildRoleBasedContent
+
+**Path:** `lib/features/group/widgets/build_role_based_content.dart`
+
+Dynamic content widget yang berubah berdasarkan user role.
+
+<Accordion title="Role-based Rendering">
+```dart
+class BuildRoleBasedContent extends StatelessWidget {
+  final PerjalananController perjalananController;
+  final VoidCallback onPressedBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final role = Get.find<GroupController>().role.value;
+      
+      if (role == 'ustadz') {
+        return UstadzControls(
+          perjalananController: perjalananController,
+          onPressedBack: onPressedBack,
+        );
+      } else {
+        return UserWaitingView();
+      }
+    });
+  }
+}
+```
+
+**Dynamic Content:**
+- **Role Detection**: Automatic role-based rendering
+- **Ustadz Features**: Progress controls, journey management
+- **User Features**: Simple waiting interface
+- **Reactive Updates**: Re-render saat role berubah
+</Accordion>
+
+### BuildUserAvatar
+
+**Path:** `lib/features/group/widgets/build_user_avatar.dart`
+
+<Accordion title="User Profile Display">
+```dart
+class BuildUserAvatar extends StatelessWidget {
+  final CheckUserInGroupModel user;
+  final VoidCallback? onTap;
+
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column([
+        Stack([
+          CircleAvatar(
+            backgroundImage: NetworkImage(user.photo),
+            radius: 25,
+          ),
+          // Online status indicator
+          if (user.online == "1")
+            Positioned(
+              bottom: 0,
+              right: 0,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+        ]),
+        Text(user.name),
+        // Role badge
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: user.role == 'ustadz' ? Colors.orange : Colors.blue,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(user.role.toUpperCase()),
+        ),
+      ]),
+    );
+  }
+}
+```
+
+**Avatar Features:**
+- **Profile Images**: Network image loading dengan fallbacks
+- **Online Indicators**: Green dot untuk online users
+- **Role Badges**: Color-coded role indicators
+- **Interactive**: Tap handling untuk user details
+</Accordion>
+
+### ShareBottomSheet
+
+**Path:** `lib/features/group/widgets/share_bottom_sheet.dart`
+
+<Accordion title="Group Sharing Interface">
+```dart
+class ShareBottomSheet extends StatelessWidget {
+  final String groupCode;
+  final String groupName;
+
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column([
+        Text('Bagikan Grup'),
+        
+        // Group code display
+        Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row([
+            Text(groupCode),
+            IconButton(
+              icon: Icon(Icons.copy),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: groupCode));
+                Get.snackbar('Berhasil', 'Kode grup disalin');
+              },
+            ),
+          ]),
+        ),
+        
+        // Share options
+        Row([
+          ShareButton(
+            icon: Icons.share,
+            text: 'Share',
+            onTap: () => Share.share('Join grup $groupName dengan kode: $groupCode'),
+          ),
+          ShareButton(
+            icon: Icons.message,
+            text: 'WhatsApp',
+            onTap: () => WhatsAppController().launchWhatsApp(''),
+          ),
+        ]),
+      ]),
+    );
+  }
+}
+```
+
+**Sharing Features:**
+- **Code Display**: Large, copyable group code
+- **Copy to Clipboard**: One-tap copy dengan feedback
+- **Multiple Share Options**: Native share dan WhatsApp direct
+- **Responsive Design**: Proper bottom sheet behavior
+</Accordion>
+
+---
+
+## 🔄 Real-time Architecture
+
+### Polling System Design
+
+<Accordion title="Multi-layer Polling">
+```dart
+// Layer 1: Group Controller - User list updates
+Timer.periodic(Duration(seconds: 5), (timer) {
+  fetchGroupUsers(isPolling: true);
+});
+
+// Layer 2: Waiting Polls Controller - Live session detection  
+Timer.periodic(Duration(seconds: 5), (timer) {
+  _cekLive();
+});
+
+// Layer 3: Group List Controller - Group list updates
+Timer.periodic(Duration(seconds: 5), (timer) {
+  fetchAllGroupUsers();
+});
+```
+
+**Polling Strategy:**
+- **Staggered Polling**: Different controllers poll different data
+- **Memory Efficient**: Minimize UI updates during polling
+- **Error Resilient**: Each polling layer handles errors independently
+- **Lifecycle Aware**: Pause/resume based on app state
+</Accordion>
+
+### State Synchronization
+
+<Accordion title="Cross-controller Communication">
+```dart
+// Journey status reset saat join grup baru
+if (Get.isRegistered<PerjalananController>()) {
+  final perjalananController = Get.find<PerjalananController>();
+  perjalananController.statusMap.clear();
+  perjalananController.statusMap.refresh();
+}
+
+// Live session detection triggers group controller stop
+if (matchingData != null) {
+  stopCekLiveTimer();
+  _groupController?.stopPolling();
+  Get.offAllNamed('/audioRoomScreen');
+}
+```
+
+**Synchronization Features:**
+- **Cross-controller Communication**: Controllers communicate via Get.find()
+- **State Reset**: Clean state saat join grup baru
+- **Resource Management**: Stop unnecessary polling saat transition
+- **Navigation Coordination**: Smooth transitions antar screens
+</Accordion>
+
+---
+
+## 🔗 Integration Points
+
+### Audio Room Integration
+
+<Accordion title="Seamless Audio Transition">
+```dart
+// Room code generation
+Future<RoomCodeModel> fetchRoomCode() async {
+  final token = await SharedPreferencesService.getToken();
+  final roomId = await SharedPreferencesService.getRoomid();
+  
+  final response = await _dio.post(
+    Endpoints.baseUrl2 + Endpoints.generateRoomCode,
+    data: {'roomId': roomId},
+    options: Options(headers: {'token': token}),
+  );
+  
+  return RoomCodeModel.fromJson(response.data);
+}
+
+// Auto-redirect saat live
+if (response['data']['live'] == 1) {
+  isLive.value = true;
+  // Redirect all group members
+  Get.offAllNamed('/audioRoomScreen');
+}
+```
+
+**Audio Features:**
+- **Token Management**: Speaker/listener tokens untuk audio permissions
+- **Live Detection**: Auto-redirect saat session jadi live
+- **Group Synchronization**: Semua anggota grup redirect bersamaan
+- **Security**: Token-based access control
+</Accordion>
+
+### WhatsApp Integration
+
+<Accordion title="Direct WhatsApp Communication">
+```dart
+class WhatsAppController extends GetxController {
+  void launchWhatsApp(String noWhatsApp) async {
+    String phoneNumber = noWhatsApp.replaceAll(RegExp(r'[^0-9+]'), '');
+
+    if (phoneNumber.startsWith('0')) {
+      phoneNumber = phoneNumber.replaceFirst('0', '+62');
+    }
+
+    final Uri waUrl = Uri.parse('https://wa.me/$phoneNumber');
+
+    if (await canLaunchUrl(waUrl)) {
+      await launchUrl(waUrl, mode: LaunchMode.externalApplication);
+    } else {
+      Get.snackbar('Error', 'Gagal membuka WhatsApp');
+    }
+  }
+}
+```
+
+**WhatsApp Features:**
+- **Number Formatting**: Auto-format Indonesian phone numbers
+- **Deep Linking**: Direct WhatsApp app integration
+- **Error Handling**: Graceful fallback jika WhatsApp tidak available
+- **External App**: Launch dalam app mode untuk seamless UX
+</Accordion>
+
+---
+
+## 🦴 Loading States & Skeleton UI
+
+### Skeleton Loading Components
+
+<Accordion title="SkeletonLoadPeserta">
+```dart
+class SkeletonLoadPeserta extends StatelessWidget {
+  Widget build(BuildContext context) {
+    return Column([
+      // Header skeleton
+      Container(
+        height: 20,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.grey[300],
+          borderRadius: BorderRadius.circular(4),
+        ),
+      ),
+      
+      // User list skeleton
+      GridView.builder(
+        itemCount: 6,
+        itemBuilder: (context, index) => Column([
+          // Avatar skeleton
+          CircleAvatar(
+            radius: 25,
+            backgroundColor: Colors.grey[300],
+          ),
+          // Name skeleton
+          Container(
+            height: 12,
+            width: 60,
+            color: Colors.grey[300],
+          ),
+          // Role badge skeleton
+          Container(
+            height: 16,
+            width: 40,
+            color: Colors.grey[300],
+          ),
+        ]),
+      ),
+    ]);
+  }
+}
+```
+
+**Skeleton Features:**
+- **Realistic Layout**: Match actual content structure
+- **Progressive Loading**: Show skeleton while data loads
+- **Shimmer Effect**: Subtle loading animation
+- **Responsive**: Adapt to different screen sizes
+</Accordion>
+
+---
+
+## 🚀 Usage Examples
+
+### Basic Group Setup
+
+<Accordion title="Initialize Group Controller">
+```dart
+class GroupScreen extends StatefulWidget {
+  @override
+  void initState() {
+    super.initState();
+    
+    // Initialize controllers
+    final groupController = Get.put(GroupController());
+    final perjalananController = Get.put(PerjalananController());
+    final userStatusController = Get.put(UserStatusController());
+    
+    // Set user online
+    userStatusController.setStatusOnline();
+    
+    // Start polling
+    groupController.startPolling();
+  }
+}
+```
+</Accordion>
+
+### Join Group Flow
+
+<Accordion title="Complete Join Process">
+```dart
+// 1. Show group list
+Get.to(() => GroupListScreenNew());
+
+// 2. User selects group
+final success = await groupController.joinGrup(grupId, grupName);
+
+// 3. Navigate to waiting room
+if (success) {
+  Get.to(() => GroupWaitingScreen());
+}
+
+// 4. Auto-start polling dan monitoring
+// Controllers automatically handle real-time updates
+```
+</Accordion>
+
+### Live Session Transition
+
+<Accordion title="Audio Room Integration">
+```dart
+// 1. Ustadz starts progress
+await perjalananController.postProgress(perjalananId);
+
+// 2. System detects live status
+if (response['data']['live'] == 1) {
+  isLive.value = true;
+}
+
+// 3. Polling detects live session
+final matchingData = cekLiveResponse.data.firstWhereOrNull(
+  (item) => item.grupId == currentGroupId && item.live == 1
+);
+
+// 4. Auto-redirect semua users
+if (matchingData != null) {
+  Get.offAllNamed('/audioRoomScreen');
+}
+```
+</Accordion>
+
+---
+
+## ⚙️ Configuration & Setup
+
+### Dependencies
+
+<Accordion title="Required Packages">
+```yaml
+dependencies:
+  # State management
+  get: ^4.6.5                    # GetX untuk reactive state management
+  
+  # HTTP & API
+  dio: ^5.3.2                    # HTTP client untuk API calls
+  
+  # Local storage
+  shared_preferences: ^2.2.0     # Local data persistence
+  
+  # Permissions
+  permission_handler: ^10.4.3    # Audio permissions untuk room integration
+  
+  # External integration
+  url_launcher: ^6.1.12          # WhatsApp deep linking
+  
+  # UI enhancements
+  flutter_staggered_animations: ^1.1.1  # List animations
+  fluttertoast: ^8.2.2          # User feedback toasts
+  
+  # Fonts & styling
+  google_fonts: ^5.1.0          # Typography consistency
+```
+</Accordion>
+
+### API Endpoints
+
+<Accordion title="Endpoint Configuration">
+```dart
+class Endpoints {
+  static const String baseUrl2 = 'https://api.maqdisconnect.com';
+  
+  // Group management
+  static const String getGrup = '/api/Group';
+  static const String joinGrup = '/api/Group/join';
+  static const String getPesertaGroup = '/api/Group/peserta';
+  static const String cekUserGrup = '/api/Group/cek-user';
+  
+  // Live progress
+  static const String liveProgress = '/api/progress/live';
+  
+  // Room management
+  static const String generateRoomCode = '/api/room/generate-code';
+  
+  // Journey management
+  static const String perjalanan = '/api/perjalanan';
+  static const String progress = '/api/progress';
+}
+```
+</Accordion>
+
+---
+
+## 🔒 Security & Performance
+
+### Security Measures
+
+<Accordion title="Authentication & Authorization">
+- **Token-based API**: Semua API calls menggunakan authentication tokens
+- **Role-based Access**: Different permissions untuk ustadz vs user
+- **Input Validation**: Sanitize semua user inputs
+- **Session Management**: Auto-logout saat token expired
+</Accordion>
+
+### Performance Optimization
+
+<Accordion title="Optimization Strategies">
+- **Smart Polling**: Hanya update data yang berubah
+- **Memory Management**: Proper controller disposal
+- **Lazy Loading**: Controllers di-create saat dibutuhkan
+- **Background Handling**: Pause polling saat app di-background
+- **Network Optimization**: Efficient API calls dengan proper caching
+</Accordion>
+
+---
+
+## 📋 Error Handling
+
+### Network Error Handling
+
+<Accordion title="API Error Management">
+```dart
+try {
+  final response = await _dio.get(url);
+  if (response.statusCode == 200) {
+    return processData(response.data);
+  }
+} on DioException catch (e) {
+  if (e.response?.statusCode == 404) {
+    return handleNotFound();
+  } else if (e.response?.statusCode == 401) {
+    return handleUnauthorized();
+  }
+} catch (e) {
+  return handleGenericError(e);
+}
+```
+
+**Error Strategies:**
+- **Specific Error Handling**: Different handling untuk different HTTP codes
+- **User-friendly Messages**: Convert technical errors ke user-readable messages
+- **Graceful Degradation**: App tetap functional meski ada API errors
+- **Retry Mechanisms**: Automatic retry untuk temporary failures
+</Accordion>
+
+---
+
+## 🔗 Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Audio Room Integration" href="/features/player" icon="headphones">
+    Audio room features dan real-time communication
+  </Card>
+  
+  <Card title="Authentication System" href="/features/auth" icon="shield">
+    User authentication dan session management
+  </Card>
+  
+  <Card title="Journey Management" href="/features/beranda" icon="map">
+    Perjalanan data dan progress tracking
+  </Card>
+  
+  <Card title="API Documentation" href="/api/group" icon="code">
+    Backend API specifications untuk grup features
+  </Card>
+</CardGroup>
+
+---
+
+<Info>
+**Note:** Modul grup merupakan inti dari pengalaman kolektif jamaah dengan real-time features yang komprehensif. Pastikan proper setup untuk audio permissions dan network connectivity untuk optimal performance.
+</Info>

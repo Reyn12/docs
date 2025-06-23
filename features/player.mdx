@@ -1,4 +1,1079 @@
 ---
-title: "Player"
-description: "Description of your new file."
+title: "Audio Room & Player Module"
+description: "Dokumentasi lengkap untuk audio room, prayer audio player, HMS SDK integration, dan real-time synchronization di aplikasi Maqdis Connect"
+icon: "headphones"
 ---
+
+# Audio Room & Player Module
+
+Modul player menyediakan pengalaman audio room yang komprehensif dengan HMS SDK integration, real-time prayer audio synchronization, location tracking, dan role-based controls untuk pengalaman jamaah yang immersive.
+
+## 🏗️ Arsitektur
+
+```
+lib/features/player/
+├── controllers/          # Business logic & state management
+│   ├── audio_room_controller.dart      # Core audio room management
+│   ├── player_controller.dart          # Audio playback controls
+│   ├── hms_kode_fix.dart              # HMS SDK implementation
+│   ├── simple_hms_test.dart           # HMS testing utilities
+│   └── audio_room_web_controller.dart # Web platform support
+├── services/            # API services & data layer
+│   └── player_service.dart            # Prayer audio API
+├── views/               # UI screens
+│   └── audio_room_screen.dart         # Main audio room interface
+├── widgets/             # Reusable components
+│   ├── audio_controls.dart            # Playback control panel
+│   ├── doa_player.dart               # Prayer text display
+│   ├── daftar_peserta_widget.dart    # Participant management
+│   ├── progress_perjalanan_widget.dart # Journey progress tracking
+│   ├── dialog_*.dart                 # Various modal dialogs
+│   ├── mic.dart                      # Microphone controls
+│   └── progress_bar_widget.dart      # Audio progress indicator
+└── bindings/            # Dependency injection
+    └── audio_room_binding.dart
+```
+
+## 🎯 Fitur Utama
+
+<CardGroup cols={2}>
+  <Card title="Real-time Audio Room" icon="microphone">
+    - HMS SDK integration untuk audio communication
+    - Role-based permissions (Speaker/Listener)
+    - Real-time participant management
+    - Location-based distance tracking
+  </Card>
+  
+  <Card title="Prayer Audio Player" icon="music">
+    - Synchronized prayer audio playback
+    - Arabic text dengan adjustable font size
+    - Translation display dengan custom styling
+    - Auto-progression through prayer sequences
+  </Card>
+  
+  <Card title="Live Session Management" icon="satellite-dish">
+    - Real-time session state synchronization
+    - Progress tracking across participants
+    - Journey completion monitoring
+    - Timer-based session duration
+  </Card>
+  
+  <Card title="Interactive Controls" icon="sliders">
+    - Role-based control interfaces
+    - Audio settings customization
+    - Participant interaction features
+    - Journey completion controls
+  </Card>
+</CardGroup>
+
+---
+
+## 🎮 Controllers
+
+### AudioRoomController
+
+**Path:** `lib/features/player/controllers/audio_room_controller.dart`
+
+Controller utama untuk audio room dengan HMS SDK integration, location tracking, dan real-time synchronization.
+
+#### Key Features:
+- **HMS SDK Management**: Complete 100ms Live integration
+- **Real-time Location**: GPS tracking dan distance calculation
+- **Session Synchronization**: Cross-participant state management
+- **Audio Room Controls**: Mic, speaker, participant management
+
+#### Properties:
+
+<Accordion title="HMS SDK Integration">
+```dart
+late HMSSDK _hmsSDK;
+HMSSessionStore? _hmsSessionStore;
+HMSPeer? _localPeer;
+
+final RxList<PeerTrackNode> listener = <PeerTrackNode>[].obs;   // Jamaah participants
+final RxList<PeerTrackNode> speaker = <PeerTrackNode>[].obs;    // Ustadz participants
+RxBool isMicrophoneMuted = false.obs;                           // Mic control
+var peerNetworkQuality = <String, int>{}.obs;                  // Network status
+```
+
+**HMS Features:**
+- **Peer Management**: Separate speaker/listener tracking
+- **Audio Control**: Microphone mute/unmute functionality
+- **Network Quality**: Real-time connection monitoring
+- **Session Store**: Synchronized state across participants
+</Accordion>
+
+<Accordion title="Location & Distance Tracking">
+```dart
+var otherUsersLocation = <String, Position>{}.obs;  // Other participants' locations
+final LocationController locationController = Get.put(LocationController());
+
+void sendLocationToMetadata(double lat, double lon) {
+  String newMetadata = '{"lat": $lat, "lon": $lon}';
+  
+  _hmsSDK.changeMetadata(metadata: newMetadata).then((_) {
+    // Location sent to HMS metadata
+  }).catchError((error) {
+    print("Gagal mengirim metadata: $error");
+  });
+}
+
+double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  return Geolocator.distanceBetween(lat1, lon1, lat2, lon2);
+}
+```
+
+**Location Features:**
+- **GPS Integration**: Real-time location updates
+- **Metadata Sync**: Location sharing via HMS metadata
+- **Distance Calculation**: Auto-calculate distance between participants
+- **Privacy Control**: Location sharing untuk group context
+</Accordion>
+
+#### Core Methods:
+
+<Accordion title="initHMSSDK() & Room Management">
+```dart
+Future<void> initHMSSDK() async {
+  isPreparingHmsSDK.value = true;
+  
+  await _loadUserRole();
+  await _authController.setAuthToken();
+  
+  if (_authController.authToken.isNotEmpty) {
+    await initHMSSDK();
+    playerController.loadJsonData();
+    startTimer();
+    isPreparingHmsSDK.value = false;
+  }
+}
+
+void leaveRoom() async {
+  await _hmsSDK.leave();
+}
+```
+
+**SDK Management:**
+- **Initialization**: Complete HMS SDK setup
+- **Authentication**: Token-based room access
+- **Room Join/Leave**: Proper room lifecycle management
+- **Error Handling**: Graceful failure recovery
+</Accordion>
+
+<Accordion title="Session Synchronization">
+```dart
+void updateCurrentPage(int page, {bool isFinished = false}) {
+  _hmsSessionStore?.setSessionMetadataForKey(
+    key: 'currentDoa',
+    data: page.toString(),
+  );
+
+  _hmsSessionStore?.setSessionMetadataForKey(
+    key: 'isFinished',
+    data: isFinished.toString(),
+  );
+}
+
+@override
+void onKeyChanged({required String key, required String? value}) async {
+  if (key == 'currentDoa') {
+    int newPage = int.tryParse(value ?? "0") ?? 0;
+    // Sync page changes across participants
+  }
+  
+  if (key == 'isFinished') {
+    bool isFinished = value == 'true';
+    // Sync completion status
+  }
+}
+```
+
+**Synchronization Features:**
+- **Real-time State**: HMS SessionStore untuk cross-participant sync
+- **Page Synchronization**: Auto-sync prayer page changes
+- **Completion Status**: Shared completion state
+- **Event Handling**: Reactive updates pada state changes
+</Accordion>
+
+---
+
+### PlayerControllerTesting
+
+**Path:** `lib/features/player/controllers/player_controller.dart`
+
+Specialized controller untuk prayer audio playback dengan just_audio integration dan progress management.
+
+#### Features:
+
+<Accordion title="Audio Playback Management">
+```dart
+var audioPlayer = AudioPlayer();
+var currentPosition = Duration.zero.obs;
+var isPlaying = false.obs;
+var isLoading = false.obs;
+var isFinished = false.obs;
+
+@override
+void onInit() {
+  super.onInit();
+  
+  // Position stream listener
+  audioPlayer.positionStream.listen((position) {
+    currentPosition.value = position;
+  });
+
+  // Player state listener
+  audioPlayer.playerStateStream.listen((playerState) {
+    isPlaying.value = playerState.playing;
+    isLoading.value = playerState.processingState == ProcessingState.loading;
+    
+    if (playerState.processingState == ProcessingState.completed) {
+      isPlaying.value = false;
+      currentPosition.value = Duration.zero;
+    }
+  });
+}
+```
+
+**Audio Features:**
+- **JustAudio Integration**: Professional audio playback
+- **Stream Listeners**: Real-time position dan state updates
+- **State Management**: Reactive audio state tracking
+- **Auto-reset**: Position reset saat audio completed
+</Accordion>
+
+<Accordion title="Prayer Data Management">
+```dart
+var listpage = <Map<String, dynamic>>[].obs;
+var currentIndex = 0.obs;
+
+Future<void> loadJsonData() async {
+  final perjalananId = await RoomDataSharedPreferenceService.getCurrentPerjalananId();
+  final userRole = await SharedPreferencesService.getRole();
+
+  final jsonData = await _progressDoaService.fetchDoaByPerjalananId(perjalananId);
+
+  listpage.value = jsonData
+      .map((item) => {
+            "doaId": item["doaid"],
+            "judul_doa": item["judul_doa"],
+            "audio": item["link_audio"],
+            "ayat": item["ayat"]
+          })
+      .toList();
+
+  if (listpage.isNotEmpty) {
+    currentIndex.value = 0;
+    if (userRole == 'ustadz') {
+      await startProgressForCurrentDoa();
+    }
+    await loadAudio();
+  }
+}
+```
+
+**Data Management:**
+- **API Integration**: Fetch prayer data by journey ID
+- **Role-based Logic**: Different behavior untuk ustadz vs jamaah
+- **Progress Tracking**: Auto-start progress untuk ustadz
+- **Data Transformation**: API response ke usable format
+</Accordion>
+
+<Accordion title="Navigation & Progress Control">
+```dart
+void nextPage() async {
+  if (currentIndex.value < listpage.length - 1) {
+    isLoading.value = true;
+
+    try {
+      // Move to next page
+      currentIndex.value++;
+
+      // Update progress for current doa
+      String? progressDoaId = _progressDoaController.progressData['progress_doaid'];
+      if (progressDoaId != null) {
+        await _progressDoaController.updateProgressDoa(progressDoaId);
+      }
+
+      // Start progress for new doa
+      await _progressDoaController.postProgressDoa(listpage[currentIndex.value]["doaId"]);
+
+      // Reset audio position
+      currentPosition.value = Duration.zero;
+      await loadAudio();
+    } finally {
+      isLoading.value = false;
+    }
+  }
+}
+
+void finishPage() async {
+  isFinished.value = true;
+  stopAudio();
+
+  String? progressDoaId = _progressDoaController.progressData['progress_doaid'];
+  if (progressDoaId != null) {
+    await _progressDoaController.updateProgressDoa(progressDoaId);
+  }
+}
+```
+
+**Navigation Features:**
+- **Sequential Navigation**: Forward/backward through prayers
+- **Progress Integration**: Auto-update progress pada navigation
+- **State Management**: Loading states untuk smooth UX
+- **Completion Handling**: Final prayer completion logic
+</Accordion>
+
+---
+
+## 🔧 Services
+
+### PlayerService
+
+**Path:** `lib/features/player/services/player_service.dart`
+
+Simple but essential service untuk prayer audio data fetching.
+
+<Accordion title="Prayer Data API">
+```dart
+class PlayerService {
+  final dio = Dio();
+
+  Future<List<dynamic>> fetchDoaByPerjalananId(String perjalananId) async {
+    try {
+      final response = await dio.get(
+          Endpoints.baseUrl2 + Endpoints.getDoaByPerjalananId + perjalananId);
+
+      if (response.statusCode == 200) {
+        return response.data;
+      } else {
+        throw Exception("Error: ${response.statusCode}");
+      }
+    } catch (e) {
+      throw Exception("Error loading API data: $e");
+    }
+  }
+}
+```
+
+**API Features:**
+- **Journey-based**: Fetch prayers berdasarkan perjalanan ID
+- **Error Handling**: Comprehensive error management
+- **Direct Response**: Return raw API data untuk flexibility
+</Accordion>
+
+---
+
+## 🎨 Views & UI Components
+
+### AudioRoomScreen
+
+**Path:** `lib/features/player/views/audio_room_screen.dart`
+
+Main audio room interface dengan tabbed layout dan responsive design.
+
+<Accordion title="Tabbed Interface">
+```dart
+DefaultTabController(
+  length: 3,
+  child: Column([
+    TabBar(
+      controller: controller.tabController,
+      tabs: [
+        Tab(text: 'Doa'),      // Prayer content
+        Tab(text: 'Peserta'),  // Participants
+        Tab(text: 'Perjalanan'), // Journey progress
+      ],
+    ),
+    Expanded(
+      child: TabBarView([
+        DoaPlayer(audioRoomController: controller),
+        DaftarPesertaWidget(),
+        ProgressPerjalananWidget(audioRoomController: controller),
+      ]),
+    ),
+  ]),
+);
+```
+
+**Interface Features:**
+- **Three-tab Layout**: Organized content separation
+- **Dynamic Controllers**: Tab controller integration
+- **Responsive Design**: Adapt untuk different screen sizes
+- **Integrated Controls**: Audio controls pada bottom
+</Accordion>
+
+<Accordion title="Audio Controls Integration">
+```dart
+Obx(() {
+  Widget child = AnimatedContainer(
+    duration: const Duration(milliseconds: 300),
+    child: Container(
+      padding: playerController.isFinished.value
+          ? const EdgeInsets.symmetric(horizontal: 10, vertical: 0)
+          : const EdgeInsets.fromLTRB(20, 10, 20, 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: playerController.isFinished.value
+            ? BorderRadius.circular(16)
+            : const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+      ),
+      child: AudioControls(
+        controller: playerController,
+        audioRoomController: controller,
+      ),
+    ),
+  );
+
+  return playerController.isFinished.value
+      ? controller.role!.value == 'ustadz'
+          ? Center(child: IntrinsicWidth(child: child))
+          : const SizedBox.shrink()
+      : IntrinsicHeight(child: child);
+});
+```
+
+**Control Features:**
+- **Animated Transitions**: Smooth UI state changes
+- **Role-based Visibility**: Different controls untuk ustadz/jamaah
+- **Completion States**: Special layout saat journey finished
+- **Responsive Padding**: Adaptive spacing berdasarkan state
+</Accordion>
+
+---
+
+## 🧩 Widgets & Components
+
+### DoaPlayer
+
+**Path:** `lib/features/player/widgets/doa_player.dart`
+
+Prayer content display dengan Arabic text, translation, dan dynamic font sizing.
+
+<Accordion title="Prayer Content Display">
+```dart
+Widget build(BuildContext context) {
+  return Obx(() {
+    if (controller.listpage.isEmpty) {
+      return Center(child: LoadingAnimationWidget.staggeredDotsWave(
+          color: GlobalColors.mainColor, size: 30));
+    }
+
+    if (controller.isFinished.value) {
+      return Center(child: DoaFinishedWidget(
+        audioRoomController: audioRoomController,
+      ));
+    }
+
+    var data = controller.listpage[controller.currentIndex.value];
+
+    return ListView.builder(
+      itemCount: 1,
+      itemBuilder: (context, index) {
+        return Container(
+          child: Column([
+            // Prayer title
+            Text(
+              data['judul_doa'],
+              style: GoogleFonts.lato(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: GlobalColors.mainColor,
+              ),
+            ),
+            
+            // Arabic text and translation
+            for (var ayat in data['ayat'])
+              Column([
+                // Arabic text
+                Obx(() => Text(
+                  ayat['teks_ayat'],
+                  style: TextStyle(
+                    fontFamily: 'lpmq',
+                    fontSize: controller.arabicFontSize.value,
+                  ),
+                  textAlign: TextAlign.end,
+                )),
+                
+                // Translation
+                Obx(() => Text(
+                  ayat['terjemahan'],
+                  style: GoogleFonts.lato(
+                    fontSize: controller.translationFontSize.value,
+                    color: const Color.fromARGB(255, 134, 101, 4),
+                  ),
+                )),
+              ]),
+          ]),
+        );
+      },
+    );
+  });
+}
+```
+
+**Content Features:**
+- **Dynamic Loading**: Loading states untuk smooth UX
+- **Completion States**: Special UI saat prayers finished
+- **Arabic Typography**: Custom 'lpmq' font untuk Arabic text
+- **Adjustable Fonts**: Reactive font size changes
+- **Bilingual Display**: Arabic dengan translation
+</Accordion>
+
+### AudioControls
+
+**Path:** `lib/features/player/widgets/audio_controls.dart`
+
+Comprehensive audio control panel dengan role-based functionality.
+
+<Accordion title="Role-based Controls">
+```dart
+Obx(() {
+  bool isFirstPage = controller.currentIndex.value == 0;
+  bool isLastPage = controller.currentIndex.value == controller.listpage.length - 1;
+  
+  if (audioRoomController.role!.value == 'ustadz') {
+    return Row([
+      // Settings button
+      WCustomButton(
+        iconOnly: true,
+        icon: MingCuteIcons.mgc_settings_4_line,
+        onPressed: () => Get.dialog(DialogSettingNew(playerController: controller)),
+      ),
+      
+      // Playback controls
+      PlaybackControlButton(controller: controller),
+      
+      // Microphone control
+      Mic(audioRoomController: audioRoomController),
+      
+      // Navigation controls
+      WCustomButton(
+        icon: Icons.keyboard_arrow_left,
+        iconColor: isFirstPage ? Color(0xFFB1B1B1) : Colors.white,
+        buttonColor: isFirstPage ? Color(0xFFE9E9E9) : Color(0xFF25D158),
+        onPressed: isFirstPage ? null : () {
+          // Previous page logic with confirmation dialog
+        },
+      ),
+      
+      WCustomButton(
+        icon: isLastPage ? MingCuteIcons.mgc_flag_3_fill : Icons.keyboard_arrow_right,
+        buttonColor: isLastPage ? Colors.red : Color(0xFF25D158),
+        onPressed: isLastPage ? () {
+          controller.finishPage();
+          // Finish journey logic
+        } : () {
+          // Next page logic with confirmation dialog
+        },
+      ),
+    ]);
+  }
+  
+  // User controls (simplified)
+  return Row([
+    WCustomButton(
+      icon: MingCuteIcons.mgc_settings_4_line,
+      onPressed: () => Get.dialog(DialogSettingNew(playerController: controller)),
+    ),
+    PlaybackControlButton(controller: controller),
+  ]);
+});
+```
+
+**Control Features:**
+- **Role-based UI**: Different controls untuk ustadz vs jamaah
+- **State-aware Buttons**: Disabled states berdasarkan position/status
+- **Confirmation Dialogs**: User confirmation untuk navigation
+- **Progress Integration**: Controls update progress automatically
+</Accordion>
+
+### DaftarPesertaWidget
+
+**Path:** `lib/features/player/widgets/daftar_peserta_widget.dart`
+
+Participant management dengan location tracking dan role visualization.
+
+<Accordion title="Participant Display">
+```dart
+Widget build(BuildContext context) {
+  return Padding(
+    padding: const EdgeInsets.all(15),
+    child: Column([
+      // Speaker section (Ustadz)
+      Obx(() {
+        final speakers = audioRoomController.speaker;
+        final locationController = Get.find<LocationController>();
+
+        return SliverToBoxAdapter(
+          child: Wrap(
+            children: List.generate(speakers.length, (index) {
+              final peer = speakers[index].peer;
+              
+              // Get location and calculate distance
+              final otherPosition = audioRoomController.otherUsersLocation[peer.customerUserId];
+              double? distance;
+              if (otherPosition != null) {
+                distance = Geolocator.distanceBetween(
+                  locationController.latitude.value,
+                  locationController.longitude.value,
+                  otherPosition.latitude,
+                  otherPosition.longitude,
+                );
+              }
+
+              return ElevatedButton(
+                onPressed: () => showUserDetailDialog(
+                  context: context,
+                  peer: peer,
+                  distance: distance,
+                  position: otherPosition,
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: GlobalColors.mainColor, width: 2),
+                  ),
+                  child: Column([
+                    Text(peer.name),
+                    Stack([
+                      CircleAvatar(/* Profile avatar */),
+                      // Online status indicator
+                    ]),
+                    if (distance != null)
+                      Text("${distance.toStringAsFixed(1)} m"),
+                  ]),
+                ),
+              );
+            }),
+          ),
+        );
+      }),
+      
+      // Divider
+      Divider(thickness: 2, color: Color(0xFFE9E9E9)),
+      
+      // Listener section (Jamaah) - similar structure
+      Obx(() {
+        final listeners = audioRoomController.listener;
+        // Similar implementation untuk listener participants
+      }),
+    ]),
+  );
+}
+```
+
+**Participant Features:**
+- **Role Separation**: Clear visual distinction speaker vs listener
+- **Distance Display**: Real-time distance calculation
+- **Profile Information**: Avatar, name, dan status
+- **Interactive**: Tap untuk detail information
+- **Location Integration**: GPS-based distance tracking
+</Accordion>
+
+### ProgressPerjalananWidget
+
+**Path:** `lib/features/player/widgets/progress_perjalanan_widget.dart`
+
+Journey progress tracker dengan timeline visualization.
+
+<Accordion title="Timeline Progress">
+```dart
+Widget buildTimelineTile(
+  BuildContext context,
+  String title,
+  String time,
+  bool isCompleted, {
+  bool isCurrent = false,
+  bool isLastItem = false,
+}) {
+  return Row([
+    Column([
+      Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage(isCurrent
+                ? 'assets/icon_point.png'
+                : (isCompleted ? 'assets/icon_check.png' : 'assets/icon_point.png')),
+          ),
+          color: isCurrent
+              ? GlobalColors.mainColor
+              : (isCompleted ? Color(0xFF25D158) : Color(0xFFB1B1B1)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+      
+      // Vertical line connector
+      if (!isLastItem)
+        Container(
+          width: 4,
+          height: 80,
+          decoration: BoxDecoration(
+            color: isCurrent
+                ? GlobalColors.mainColor
+                : (isCompleted ? Color(0xFF25D158) : Color(0xFFB1B1B1)),
+          ),
+        ),
+    ]),
+    
+    Expanded(
+      child: Column([
+        Text(title, style: GoogleFonts.lato(fontWeight: FontWeight.w600)),
+        Text(time, style: GoogleFonts.lato(color: Colors.grey)),
+      ]),
+    ),
+  ]);
+}
+```
+
+**Progress Features:**
+- **Visual Timeline**: Clear progress visualization
+- **State-based Colors**: Different colors untuk completed/current/pending
+- **Icon Integration**: Custom icons untuk different states
+- **Duration Display**: Time estimation untuk each prayer
+- **Real-time Updates**: Progress updates as prayers completed
+</Accordion>
+
+---
+
+## 🔄 Real-time Architecture
+
+### HMS SDK Integration
+
+<Accordion title="Live Communication">
+```dart
+// HMS SDK initialization
+class AudioRoomController implements HMSUpdateListener, HMSActionResultListener, HMSKeyChangeListener {
+  late HMSSDK _hmsSDK;
+  HMSSessionStore? _hmsSessionStore;
+
+  // Peer management
+  final RxList<PeerTrackNode> listener = <PeerTrackNode>[].obs;
+  final RxList<PeerTrackNode> speaker = <PeerTrackNode>[].obs;
+
+  // Real-time state synchronization
+  void updateCurrentPage(int page, {bool isFinished = false}) {
+    _hmsSessionStore?.setSessionMetadataForKey(
+      key: 'currentDoa',
+      data: page.toString(),
+    );
+  }
+
+  @override
+  void onKeyChanged({required String key, required String? value}) {
+    // Handle real-time state changes across participants
+  }
+}
+```
+
+**HMS Features:**
+- **Real-time Audio**: HD audio communication
+- **Peer Tracking**: Live participant management
+- **Session Store**: Synchronized state across room
+- **Metadata Sharing**: Custom data sharing (location, progress)
+</Accordion>
+
+### Location Synchronization
+
+<Accordion title="GPS Integration">
+```dart
+// Location tracking and sharing
+void sendLocationToMetadata(double lat, double lon) {
+  String newMetadata = '{"lat": $lat, "lon": $lon}';
+  
+  _hmsSDK.changeMetadata(metadata: newMetadata).then((_) {
+    // Location successfully shared
+  });
+}
+
+// Distance calculation between participants
+double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  return Geolocator.distanceBetween(lat1, lon1, lat2, lon2);
+}
+
+// Real-time location updates
+locationController.startLocationUpdates();
+```
+
+**Location Features:**
+- **Real-time GPS**: Continuous location updates
+- **Distance Calculation**: Auto-calculate participant distances
+- **Metadata Integration**: Location sharing via HMS
+- **Privacy Control**: Group-context location sharing
+</Accordion>
+
+---
+
+## 🔗 Integration Points
+
+### Group Module Integration
+
+<Accordion title="Seamless Transition">
+```dart
+// From group waiting screen to audio room
+if (response['data']['live'] == 1) {
+  isLive.value = true;
+  Get.offAllNamed('/audioRoomScreen');
+}
+
+// Live session detection dalam group polling
+final matchingData = cekLiveResponse.data.firstWhereOrNull(
+  (item) => item.grupId == currentGroupId && item.live == 1
+);
+
+if (matchingData != null) {
+  stopCekLiveTimer();
+  Get.offAllNamed('/audioRoomScreen');
+}
+```
+
+**Integration Features:**
+- **Automatic Redirect**: From group waiting ke audio room
+- **State Transfer**: Group data transfer ke audio room
+- **Live Detection**: Real-time live session monitoring
+- **Seamless UX**: Smooth transition between modules
+</Accordion>
+
+### Progress Integration
+
+<Accordion title="Journey Progress Sync">
+```dart
+// Progress posting dan tracking
+await _progressDoaController.postProgressDoa(doaId);
+await _progressDoaController.updateProgressDoa(progressDoaId);
+
+// Journey completion
+Future<void> finishProgress() async {
+  locationController.stopLocationUpdates();
+  await _progressService.finishProgress();
+  stopTimer();
+}
+```
+
+**Progress Features:**
+- **Real-time Tracking**: Live progress updates
+- **API Integration**: Sync dengan backend
+- **Completion Handling**: Journey finish logic
+- **Timer Integration**: Session duration tracking
+</Accordion>
+
+---
+
+## 🚀 Usage Examples
+
+### Basic Audio Room Setup
+
+<Accordion title="Initialize Audio Room">
+```dart
+class AudioRoomScreen extends StatefulWidget {
+  @override
+  void initState() {
+    super.initState();
+    
+    // Get controllers
+    controller = Get.find<AudioRoomController>();
+    playerController = Get.find<PlayerControllerTesting>();
+    
+    // Monitor join status
+    ever(controller.isJoined, (val) {
+      print('Status join room: $val');
+    });
+    
+    // Load group name
+    _loadGroupName();
+  }
+}
+```
+</Accordion>
+
+### Audio Playback Flow
+
+<Accordion title="Complete Playback Management">
+```dart
+// 1. Load prayer data
+await playerController.loadJsonData();
+
+// 2. Start audio playback
+playerController.playAudio();
+
+// 3. Navigate through prayers
+playerController.nextPage(); // With progress updates
+
+// 4. Complete journey
+playerController.finishPage();
+audioRoomController.updateCurrentPage(
+  controller.currentIndex.value,
+  isFinished: true
+);
+```
+</Accordion>
+
+### HMS Room Management
+
+<Accordion title="Room Lifecycle">
+```dart
+// 1. Initialize HMS SDK
+await audioRoomController.initHMSSDK();
+
+// 2. Join room dengan authentication
+await _authController.setAuthToken();
+
+// 3. Handle real-time events
+audioRoomController.addPageChangeListener();
+
+// 4. Leave room
+audioRoomController.leaveRoom();
+```
+</Accordion>
+
+---
+
+## ⚙️ Configuration & Setup
+
+### Dependencies
+
+<Accordion title="Required Packages">
+```yaml
+dependencies:
+  # Audio playback
+  just_audio: ^0.9.35              # Professional audio player
+  
+  # HMS SDK
+  hmssdk_flutter: ^1.9.11          # 100ms Live SDK untuk audio rooms
+  
+  # Location services
+  geolocator: ^9.0.2               # GPS location tracking
+  
+  # Permissions
+  permission_handler: ^10.4.3      # Microphone & location permissions
+  
+  # UI enhancements
+  loading_animation_widget: ^1.2.0 # Loading animations
+  ming_cute_icons: ^3.0.0         # Custom icons
+  
+  # Core dependencies
+  get: ^4.6.5                      # State management
+  dio: ^5.3.2                      # HTTP client
+  google_fonts: ^5.1.0            # Typography
+```
+</Accordion>
+
+### HMS Configuration
+
+<Accordion title="HMS SDK Setup">
+```dart
+// HMS SDK configuration
+class AudioRoomController implements 
+    HMSUpdateListener, 
+    HMSActionResultListener, 
+    HMSKeyChangeListener {
+  
+  Future<void> initHMSSDK() async {
+    // Initialize HMS SDK
+    _hmsSDK = HMSSDK();
+    await _hmsSDK.build();
+    
+    // Add listeners
+    _hmsSDK.addUpdateListener(listener: this);
+    
+    // Configure session store
+    _hmsSessionStore = await _hmsSDK.getSessionStore();
+    addPageChangeListener();
+  }
+}
+```
+
+**HMS Features:**
+- **Audio Quality**: HD audio communication
+- **Real-time Sync**: Session store untuk state sync
+- **Peer Management**: Speaker/listener role management
+- **Network Resilience**: Auto-reconnection dan quality adaptation
+</Accordion>
+
+---
+
+## 🔒 Security & Performance
+
+### Audio Security
+
+<Accordion title="Secure Audio Communication">
+- **Token-based Authentication**: HMS room access control
+- **Role-based Permissions**: Speaker vs listener controls
+- **Session Management**: Auto-logout pada token expiry
+- **Privacy Protection**: Group-context location sharing
+</Accordion>
+
+### Performance Optimization
+
+<Accordion title="Optimization Strategies">
+- **Lazy Loading**: Controllers initialized saat dibutuhkan
+- **Audio Buffering**: Smart buffering untuk smooth playback
+- **Network Optimization**: Adaptive quality berdasarkan connection
+- **Memory Management**: Proper disposal audio resources
+- **Location Efficiency**: Optimized GPS tracking intervals
+</Accordion>
+
+---
+
+## 📋 Error Handling
+
+### Audio Errors
+
+<Accordion title="Playback Error Management">
+```dart
+try {
+  await audioPlayer.setUrl(audioUrl);
+  await audioPlayer.play();
+} catch (e) {
+  print("Error loading audio: $e");
+  isLoading.value = false;
+  // Fallback atau retry logic
+}
+
+// HMS SDK error handling
+@override
+void onError({required HMSException error}) {
+  print("HMS Error: ${error.message}");
+  // Handle HMS errors gracefully
+}
+```
+
+**Error Strategies:**
+- **Graceful Degradation**: App tetap functional meski ada audio errors
+- **Retry Mechanisms**: Automatic retry untuk temporary failures
+- **User Feedback**: Clear error messages untuk users
+- **Fallback Options**: Alternative flows saat primary features fail
+</Accordion>
+
+---
+
+## 🔗 Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Group Management" href="/features/group" icon="users">
+    Group integration dan live session transitions
+  </Card>
+  
+  <Card title="Journey Progress" href="/features/beranda" icon="map">
+    Perjalanan data dan progress tracking integration
+  </Card>
+  
+  <Card title="Authentication" href="/features/auth" icon="shield">
+    User authentication untuk HMS room access
+  </Card>
+  
+  <Card title="API Documentation" href="/api/player" icon="code">
+    Backend API specifications untuk audio features
+  </Card>
+</CardGroup>
+
+---
+
+<Info>
+**Note:** Modul player memerlukan microphone permissions dan stable internet connection untuk optimal performance. HMS SDK membutuhkan proper token management untuk secure audio communication.
+</Info>

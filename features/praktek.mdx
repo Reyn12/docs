@@ -1,4 +1,740 @@
 ---
-title: "Praktek"
-description: "Description of your new file."
+title: "Praktek Module" 
+description: "Dokumentasi lengkap untuk fitur praktek umroh dengan mode grup, mandiri, dan latihan serta sistem entry point yang responsif"
+icon: "graduation-cap"
 ---
+
+# Praktek Module
+
+Modul praktek berfungsi sebagai entry point utama untuk memulai praktek umroh dengan berbagai mode pilihan - grup jamaah, mandiri, dan latihan. Module ini menyediakan interface yang user-friendly dengan responsive design dan animated components untuk pengalaman yang smooth.
+
+## 🏗️ Arsitektur
+
+```
+lib/features/praktek/
+├── controllers/          # Business logic & state management
+│   └── praktek_controller.dart         # Core praktek navigation logic
+├── views/               # UI screens & layouts
+│   ├── praktek_screen_new.dart         # Main praktek screen
+│   └── responsive/                     # Responsive layouts
+│       ├── praktek_desktop_screen.dart # Desktop optimized layout
+│       └── praktek_mobile_screen.dart  # Mobile optimized layout
+├── widgets/             # Reusable components
+│   └── praktek_body.dart              # Main content widget
+├── bindings/            # Dependency injection
+│   └── praktek_screen_binding.dart    # GetX binding setup
+└── praktek.mdx         # Module documentation
+```
+
+## 🎯 Fitur Utama
+
+<CardGroup cols={2}>
+  <Card title="Group Mode Selection" icon="users">
+    - Validasi membership jamaah
+    - Auto-redirect ke waiting room atau group list
+    - Integration dengan GroupService
+    - Smart navigation flow
+  </Card>
+  
+  <Card title="Responsive Design" icon="devices">
+    - Mobile & desktop layouts
+    - LayoutBuilder dengan 1000px breakpoint
+    - Optimized UI untuk setiap platform
+    - Consistent user experience
+  </Card>
+  
+  <Card title="Animated UI Components" icon="magic">
+    - Slide transition animations
+    - Smooth loading states
+    - Interactive card components
+    - Professional visual effects
+  </Card>
+  
+  <Card title="Future Mode Support" icon="rocket">
+    - Mandiri mode (coming soon)
+    - Latihan mode (coming soon)
+    - Extensible architecture
+    - Progressive feature rollout
+  </Card>
+</CardGroup>
+
+---
+
+## 🎮 Controllers
+
+### PraktekController
+
+**Path:** `lib/features/praktek/controllers/praktek_controller.dart`
+
+Controller utama untuk manajemen navigasi praktek dan validasi group membership.
+
+#### Key Features:
+- **Group Validation**: Cek apakah user sudah join grup atau belum
+- **Smart Navigation**: Auto-redirect berdasarkan user status
+- **Loading Management**: Handle loading states untuk smooth UX
+- **Group Data Fetching**: Pre-load grup data untuk performa
+
+#### Properties:
+
+<Accordion title="Reactive Variables">
+```dart
+var isLoading = false.obs;    // Loading state untuk UI feedback
+var grupId = ''.obs;          // Current group ID dari user
+var namaGrup = ''.obs;        // Current group name dari user
+```
+</Accordion>
+
+#### Core Methods:
+
+<Accordion title="handleGrupCheck()">
+```dart
+void handleGrupCheck() async {
+  isLoading.value = true;
+
+  try {
+    // Ambil grupId lebih awal untuk menghindari redundant await
+    final storedGrupId = await SharedPreferencesService.getGroupId() ?? '';
+    grupId.value = storedGrupId;
+
+    final cekUserGrup = await _groupService.getCekUserGrup();
+    print('Hasil cekUserGrup: $cekUserGrup');
+
+    if (cekUserGrup != null &&
+        cekUserGrup.message == "Pengguna ditemukan dalam grup") {
+      Get.offNamed('/waitingScreen');
+    } else {
+      Get.to(() => const GroupListScreenNew());
+    }
+  } catch (e) {
+    print('Terjadi kesalahan: $e');
+  } finally {
+    isLoading.value = false;
+  }
+}
+```
+
+**Navigation Logic:**
+- **User sudah dalam grup**: Direct redirect ke waiting screen
+- **User belum join grup**: Navigate ke group list untuk pilih grup
+- **Error handling**: Graceful error management
+- **Loading states**: Proper feedback untuk user experience
+</Accordion>
+
+<Accordion title="getGroupNameById()">
+```dart
+Future<String?> getGroupNameById(String grupId) async {
+  List<GroupModel>? grupList = await _groupService.getGrup();
+
+  if (grupList != null) {
+    GroupModel? grup = grupList.firstWhere(
+      (grup) => grup.grupid == grupId,
+      orElse: () => GroupModel(
+        grupid: '',
+        namaGrup: '',
+        createdBy: '',
+        createdAt: DateTime.now(),
+        openUser: 0,
+        status: '',
+        userId: '',
+        roomId: null,
+        room: null,
+      ),
+    );
+
+    if (grup.grupid.isNotEmpty) {
+      return grup.namaGrup;
+    } else {
+      print("Grup dengan ID $grupId tidak ditemukan.");
+      return null;
+    }
+  }
+}
+```
+
+**Helper Features:**
+- **Group Name Resolution**: Convert group ID ke human-readable name
+- **Null Safety**: Proper handling untuk missing groups
+- **Error Logging**: Debug-friendly error messages
+- **Fallback Values**: Default empty GroupModel untuk safe operations
+</Accordion>
+
+<Accordion title="Lifecycle Management">
+```dart
+@override
+void onInit() {
+  super.onInit();
+  _fetchAndSaveGrupOnLoad();
+}
+
+void _fetchAndSaveGrupOnLoad() async {
+  isLoading.value = true;
+  final result = await _groupService.getGrup();
+  if (result != null) {
+    print("Grup berhasil diambil.");
+  } else {
+    print("Tidak ada grup yang diambil.");
+  }
+  isLoading.value = false;
+}
+```
+
+**Initialization Features:**
+- **Auto-fetch Groups**: Load grup data saat controller init
+- **Performance Optimization**: Pre-load data untuk faster user experience
+- **State Management**: Loading states selama fetch process
+</Accordion>
+
+---
+
+## 🎨 Views & UI Components
+
+### PraktekScreenNew
+
+**Path:** `lib/features/praktek/views/praktek_screen_new.dart`
+
+Main praktek screen dengan responsive design dan proper navigation handling.
+
+<Accordion title="Screen Architecture">
+```dart
+class PraktekScreenNew extends StatefulWidget {
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          Get.offUntil(
+            GetPageRoute(page: () => Home()),
+            (route) => route.isFirst,
+          );
+        }
+      },
+      canPop: false,
+      child: Stack([
+        Scaffold(
+          extendBodyBehindAppBar: true,
+          appBar: WCustomAppBar(
+            onPressed: () {
+              Get.offUntil(
+                GetPageRoute(page: () => Home()),
+                (route) => route.isFirst,
+              );
+            },
+            centerTitle: true,
+            title: 'Mulai Umroh',
+          ),
+          body: LayoutBuilder(builder: (context, constraints) {
+            double width = constraints.maxWidth;
+            return width > 1000
+                ? PraktekDesktopScreen(praktekController: _praktekController)
+                : PraktekMobileScreen(praktekController: _praktekController);
+          }),
+        ),
+        // Loading overlay
+        Obx(() {
+          if (_praktekController.isLoading.value) {
+            return Container(
+                color: Colors.black.withOpacity(0.5),
+                child: const Center(child: WEnumLoadingAnim()));
+          }
+          return const SizedBox.shrink();
+        }),
+      ]),
+    );
+  }
+}
+```
+
+**Screen Features:**
+- **Navigation Control**: PopScope untuk handle back button behavior
+- **Responsive Layout**: 1000px breakpoint untuk desktop/mobile
+- **Loading Overlay**: Full-screen loading dengan semi-transparent background
+- **Custom AppBar**: Branded app bar dengan proper back navigation
+</Accordion>
+
+### Responsive Layouts
+
+<Accordion title="Desktop & Mobile Screens">
+```dart
+// Desktop Screen
+class PraktekDesktopScreen extends StatelessWidget {
+  Widget build(BuildContext context) {
+    return PraktekBody(
+      platform: PlatformEnum.desktop,
+      onTapGrup: () {
+        praktekController.handleGrupCheck();
+      },
+    );
+  }
+}
+
+// Mobile Screen  
+class PraktekMobileScreen extends StatelessWidget {
+  Widget build(BuildContext context) {
+    return PraktekBody(
+      platform: PlatformEnum.mobile,
+      onTapGrup: () {
+        praktekController.handleGrupCheck();
+      },
+    );
+  }
+}
+```
+
+**Responsive Features:**
+- **Platform-specific UI**: Different layouts untuk desktop dan mobile
+- **Shared Logic**: Same controller dan functionality
+- **Consistent Behavior**: Same onTap actions across platforms
+</Accordion>
+
+---
+
+## 🧩 Widgets & Components
+
+### PraktekBody
+
+**Path:** `lib/features/praktek/widgets/praktek_body.dart`
+
+Widget utama yang menampilkan pilihan mode praktek dengan responsive design.
+
+<Accordion title="Content Structure">
+```dart
+class PraktekBody extends StatelessWidget {
+  final VoidCallback? onTapGrup;
+  final VoidCallback? onTapMandiri;
+  final PlatformEnum platform;
+
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Column([
+          Text(
+            'Pilih yang sesuai dengan\nanda',
+            style: GoogleFonts.lato(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          // Responsive card layout
+          platform != PlatformEnum.mobile
+              ? Row([...]) // Desktop: horizontal layout
+              : Column([...]) // Mobile: vertical layout
+        ]),
+      ),
+    );
+  }
+}
+```
+
+**Layout Features:**
+- **Responsive Cards**: Row layout untuk desktop, Column untuk mobile
+- **Typography**: Google Fonts Lato dengan proper sizing
+- **Padding System**: Consistent spacing across platforms
+</Accordion>
+
+<Accordion title="Card Options">
+```dart
+// Grup Card - ENABLED
+WPraktekCard(
+  cardImage: 'card_grup.png',
+  leadingImage: 'assets/crowd.png',
+  title: 'Grup',
+  subtitle: 'Khusus untuk kamu sebagai jamaah MAQDIS',
+  onTap: onTapGrup,
+),
+
+// Mandiri Card - DISABLED  
+WPraktekCard(
+  isDisabled: true,
+  cardImage: 'card_mandiri.png',
+  leadingImage: 'assets/hajj.png',
+  title: 'Mandiri',
+  subtitle: 'Untuk kamu yang ingin umroh secara mandiri',
+  onTap: onTapMandiri,
+),
+
+// Latihan Card - DISABLED
+WPraktekCard(
+  isDisabled: true,
+  cardImage: 'card_latihan.png',
+  leadingImage: 'assets/practice.png',
+  title: 'Latihan',
+  subtitle: 'Sebelum berangkat umroh coba latihan dulu',
+  onTap: () {},
+),
+```
+
+**Card Options:**
+- **Grup Mode**: Available - navigate ke group flow
+- **Mandiri Mode**: Coming soon - independent practice
+- **Latihan Mode**: Coming soon - training mode
+- **Progressive Rollout**: Features akan diaktifkan secara bertahap
+</Accordion>
+
+### WPraktekCard
+
+**Path:** `lib/core/common/widgets/w_praktek_card.dart`
+
+Animated card component dengan background images dan smooth transitions.
+
+<Accordion title="Animation System">
+```dart
+class _WPraktekCardState extends State<WPraktekCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<Offset> _offsetAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    )..forward(); // Start animation immediately
+
+    _offsetAnimation = Tween<Offset>(
+      begin: const Offset(0, 1), // start from bottom
+      end: Offset.zero, // end at original position
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+  }
+
+  Widget build(BuildContext context) {
+    return SlideTransition(
+      position: _offsetAnimation,
+      child: GestureDetector(
+        onTap: widget.isDisabled ? null : widget.onTap,
+        child: Container(
+          // Card content...
+        ),
+      ),
+    );
+  }
+}
+```
+
+**Animation Features:**
+- **Slide-up Effect**: Cards slide up dari bottom saat load
+- **Smooth Curves**: easeOut curve untuk natural motion
+- **500ms Duration**: Perfect timing untuk professional feel
+- **Auto-start**: Animation triggered immediately pada build
+</Accordion>
+
+<Accordion title="Visual Design">
+```dart
+Container(
+  decoration: BoxDecoration(
+    borderRadius: BorderRadius.circular(16),
+    image: DecorationImage(
+      image: AssetImage('assets/cards/${widget.cardImage}'),
+      fit: BoxFit.cover,
+      colorFilter: widget.isDisabled
+          ? const ColorFilter.mode(Colors.grey, BlendMode.saturation)
+          : null,
+    ),
+  ),
+  child: Padding(
+    padding: const EdgeInsets.fromLTRB(0, 20, 20, 20),
+    child: Row([
+      Expanded(
+        child: Image.asset(
+          widget.leadingImage,
+          height: 70,
+        ),
+      ),
+      Expanded(
+        child: Column([
+          Text(widget.title, style: titleStyle),
+          Text(widget.subtitle, style: subtitleStyle),
+          Row([
+            Text(
+              widget.isDisabled ? 'SEGERA HADIR!' : 'Mulai Disini',
+              style: actionStyle,
+            ),
+            Visibility(
+              visible: !widget.isDisabled,
+              child: Icon(Icons.keyboard_arrow_right),
+            ),
+          ]),
+        ]),
+      ),
+    ]),
+  ),
+)
+```
+
+**Design Features:**
+- **Background Images**: Beautiful card backgrounds dari assets/cards/
+- **Disabled States**: Grey filter untuk coming soon features
+- **Leading Icons**: Visual icons untuk each mode type
+- **Action Text**: "Mulai Disini" vs "SEGERA HADIR!" based on availability
+- **Arrow Indicators**: Visual cue untuk available actions
+</Accordion>
+
+---
+
+## 🔗 Integration Points
+
+### Group Module Integration
+
+<Accordion title="Seamless Group Flow">
+```dart
+// User validation check
+final cekUserGrup = await _groupService.getCekUserGrup();
+
+if (cekUserGrup != null &&
+    cekUserGrup.message == "Pengguna ditemukan dalam grup") {
+  // User already in group - go to waiting room
+  Get.offNamed('/waitingScreen');
+} else {
+  // User not in group - show group selection
+  Get.to(() => const GroupListScreenNew());
+}
+```
+
+**Integration Features:**
+- **GroupService**: Direct integration dengan group API services
+- **Automatic Routing**: Smart navigation berdasarkan user status
+- **Shared Models**: Use GroupModel dari group module
+- **Consistent UX**: Seamless transition antar modules
+</Accordion>
+
+### Authentication Integration
+
+<Accordion title="User Session Management">
+```dart
+// Get stored group data
+final storedGrupId = await SharedPreferencesService.getGroupId() ?? '';
+grupId.value = storedGrupId;
+
+// Validate user group membership
+final cekUserGrup = await _groupService.getCekUserGrup();
+```
+
+**Auth Features:**
+- **SharedPreferences**: Persistent storage untuk group membership
+- **Session Validation**: Real-time check user status
+- **Auto-login Flow**: Skip group selection jika user sudah join
+</Accordion>
+
+---
+
+## 🚀 Usage Examples
+
+### Basic Setup
+
+<Accordion title="Initialize Praktek Screen">
+```dart
+// Route configuration
+GetPage(
+  name: '/praktek',
+  page: () => const PraktekScreenNew(),
+  binding: PraktekScreenBinding(),
+),
+
+// Navigation to praktek
+Get.toNamed('/praktek');
+```
+</Accordion>
+
+### Custom Implementation
+
+<Accordion title="Extend untuk Mode Baru">
+```dart
+// Add new mode card
+WPraktekCard(
+  cardImage: 'card_virtual.png',
+  leadingImage: 'assets/vr.png',
+  title: 'Virtual Reality',
+  subtitle: 'Pengalaman umroh dengan teknologi VR',
+  onTap: () {
+    // Navigate to VR mode
+    Get.to(() => VRPraktekScreen());
+  },
+),
+
+// Update PraktekController
+void handleVRMode() async {
+  // VR mode logic
+  Get.to(() => VRPraktekScreen());
+}
+```
+</Accordion>
+
+---
+
+## ⚙️ Configuration & Setup
+
+### Dependencies
+
+<Accordion title="Required Packages">
+```yaml
+dependencies:
+  # State management
+  get: ^4.6.5                    # GetX untuk reactive state
+  
+  # UI & animations
+  google_fonts: ^5.1.0          # Typography consistency
+  flutter/material.dart          # Material design components
+  
+  # Integration
+  shared_preferences: ^2.2.0     # Local storage untuk user data
+  
+  # Core dependencies  
+  maqdis_connect/features/group  # Group module integration
+  maqdis_connect/core/common     # Shared widgets dan utilities
+```
+</Accordion>
+
+### Asset Requirements
+
+<Accordion title="Required Assets">
+```
+assets/
+├── cards/                    # Card background images
+│   ├── card_grup.png        # Group mode card background
+│   ├── card_mandiri.png     # Solo mode card background
+│   └── card_latihan.png     # Training mode card background
+├── crowd.png                # Group mode icon
+├── hajj.png                 # Solo mode icon
+└── practice.png             # Training mode icon
+```
+</Accordion>
+
+---
+
+## 🔒 Security & Performance
+
+### Performance Optimization
+
+<Accordion title="Optimization Strategies">
+- **Lazy Loading**: Controller di-inject saat needed dengan Get.lazyPut
+- **Pre-loading**: Group data di-fetch saat init untuk faster navigation
+- **Efficient Animations**: Single animation controller dengan proper disposal
+- **Memory Management**: Proper widget lifecycle dengan dispose methods
+</Accordion>
+
+### User Experience
+
+<Accordion title="UX Best Practices">
+- **Loading States**: Visual feedback selama API calls
+- **Error Handling**: Graceful fallbacks untuk network issues
+- **Responsive Design**: Optimal experience across devices
+- **Animation Timing**: Professional 500ms timing untuk smooth transitions
+</Accordion>
+
+---
+
+## 📱 Platform Support
+
+### Responsive Breakpoints
+
+<Accordion title="Layout Breakpoints">
+```dart
+LayoutBuilder(builder: (context, constraints) {
+  double width = constraints.maxWidth;
+  return width > 1000
+      ? PraktekDesktopScreen(praktekController: _praktekController)
+      : PraktekMobileScreen(praktekController: _praktekController);
+})
+```
+
+**Breakpoint Strategy:**
+- **Mobile**: < 1000px - Vertical card layout
+- **Desktop**: >= 1000px - Horizontal card layout
+- **Consistent Logic**: Same functionality across platforms
+</Accordion>
+
+---
+
+## 🔮 Future Development
+
+### Planned Features
+
+<Accordion title="Roadmap Features">
+```dart
+// Mandiri Mode - Independent practice
+void handleMandiriMode() async {
+  // Solo umroh practice without group
+  Get.to(() => MandiriPraktekScreen());
+}
+
+// Latihan Mode - Training sessions
+void handleLatihanMode() async {
+  // Practice mode dengan guided tutorials
+  Get.to(() => LatihanPraktekScreen());
+}
+
+// VR Integration
+void handleVRMode() async {
+  // Virtual reality umroh experience
+  Get.to(() => VRPraktekScreen());
+}
+```
+
+**Upcoming Features:**
+- **Mandiri Mode**: Independent practice untuk advanced users
+- **Latihan Mode**: Guided training dengan step-by-step tutorials
+- **VR Integration**: Immersive virtual reality experience
+- **AI Guidance**: Smart recommendations berdasarkan user progress
+</Accordion>
+
+---
+
+## 📋 Error Handling
+
+### Common Issues
+
+<Accordion title="Error Management">
+```dart
+try {
+  final cekUserGrup = await _groupService.getCekUserGrup();
+  // Process response...
+} catch (e) {
+  print('Terjadi kesalahan: $e');
+  // Show user-friendly error message
+  Get.snackbar(
+    'Error',
+    'Terjadi kesalahan saat memuat data grup',
+    snackPosition: SnackPosition.BOTTOM,
+  );
+} finally {
+  isLoading.value = false;
+}
+```
+
+**Error Scenarios:**
+- **Network Issues**: Graceful fallback dengan offline message
+- **Authentication Errors**: Redirect ke login screen
+- **Data Issues**: Default values dengan proper error logging
+</Accordion>
+
+---
+
+## 🔗 Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Group Management" href="/features/group" icon="users">
+    Group joining, waiting room, dan live sessions
+  </Card>
+  
+  <Card title="Audio Room" href="/features/player" icon="headphones">
+    Audio practice sessions dan real-time communication
+  </Card>
+  
+  <Card title="Authentication" href="/features/auth" icon="shield">
+    User login, registration, dan session management
+  </Card>
+  
+  <Card title="Core Widgets" href="/core/widgets" icon="puzzle-piece">
+    Shared UI components dan reusable widgets
+  </Card>
+</CardGroup>
+
+---
+
+<Info>
+**Note:** Modul praktek adalah entry point utama untuk pengalaman umroh digital. Saat ini hanya mode grup yang tersedia, dengan mode mandiri dan latihan akan segera hadir untuk memberikan pilihan praktek yang lebih beragam.
+</Info>

@@ -1,4 +1,1088 @@
 ---
-title: "Room"
-description: "Description of your new file."
+title: "Room Module"
+description: "Dokumentasi lengkap untuk fitur audio room dengan HMS SDK integration, role-based authentication, dan real-time prayer progress tracking"
+icon: "microphone"
 ---
+
+# Room Module
+
+Modul room menyediakan sistem audio room yang sophisticated dengan HMS SDK integration untuk real-time communication, role-based token authentication (ustadz/user), dan comprehensive prayer progress tracking dengan local data persistence.
+
+## 🏗️ Arsitektur
+
+```
+lib/features/room/
+├── controllers/          # Business logic & state management
+│   ├── progress_doa_controller.dart    # Prayer progress management
+│   └── player-Controller/              # Room control logic
+│       ├── room_controller.dart         # Main room operations
+│       ├── room_refresh_token_controller.dart # Token refresh logic
+│       └── Readme-Controller.MD         # Controller documentation
+├── models/               # Data structures
+│   ├── room_model.dart                 # Room data models
+│   └── peer_track_node.dart           # HMS peer tracking model
+├── services/             # API services & data layer
+│   ├── room_service.dart               # Room API operations
+│   ├── progress_doa_service.dart       # Prayer progress API
+│   └── local/                          # Local data persistence
+│       ├── room_data.dart              # SharedPreferences management
+│       └── Readme.md                   # Local service documentation
+├── views/                # UI screens
+│   └── meeting_page.dart               # HMS SDK meeting interface
+└── room.mdx             # Module documentation
+```
+
+## 🎯 Fitur Utama
+
+<CardGroup cols={2}>
+  <Card title="HMS Audio Room" icon="headphones">
+    - Real-time audio communication
+    - Speaker/Listener role management
+    - Peer tracking dan status updates
+    - Audio controls integration
+  </Card>
+  
+  <Card title="Role-based Authentication" icon="user-shield">
+    - Token-based access control
+    - Ustadz/User role differentiation
+    - Automatic token refresh
+    - Secure room access
+  </Card>
+  
+  <Card title="Prayer Progress Tracking" icon="list-check">
+    - Real-time doa status updates
+    - Progress creation dan updates
+    - Journey-based progress mapping
+    - Local progress persistence
+  </Card>
+  
+  <Card title="Local Data Management" icon="database">
+    - SharedPreferences integration
+    - Token persistence
+    - Progress ID management
+    - Journey state tracking
+  </Card>
+</CardGroup>
+
+---
+
+## 🎮 Controllers
+
+### ProgressDoaController
+
+**Path:** `lib/features/room/controllers/progress_doa_controller.dart`
+
+Controller untuk manajemen real-time prayer progress dengan API integration dan local storage coordination.
+
+#### Key Features:
+- **Prayer Status Tracking**: Real-time doa completion monitoring
+- **Progress Management**: Create dan update prayer progress
+- **Local Integration**: Coordinate dengan SharedPreferences data
+- **Error Handling**: Comprehensive error management
+
+#### Properties:
+
+<Accordion title="Reactive Variables & Services">
+```dart
+final ProgressDoaService _service = ProgressDoaService();
+
+var isLoading = false.obs;                         // Loading state indicator
+var progressData = {}.obs;                         // Progress operation results
+var doaStatuses = <Map<String, dynamic>>[].obs;    // Current doa status list
+```
+</Accordion>
+
+#### Core Methods:
+
+<Accordion title="Prayer Status Management">
+```dart
+Future<void> fetchDoaStatus() async {
+  try {
+    isLoading.value = true;
+    final perjalananId = await RoomDataSharedPreferenceService.getCurrentPerjalananId();
+    final progressId = await RoomDataSharedPreferenceService.getProgressPerjalananId();
+
+    if (perjalananId == null || perjalananId.isEmpty) {
+      print('Perjalanan ID tidak ditemukan');
+      return;
+    }
+
+    if (progressId == null || progressId.isEmpty) {
+      print('Progress ID tidak ditemukan');
+      return;
+    }
+
+    var doaStatus = await _service.fetchDoaTitlesByPerjalananId(perjalananId, progressId);
+    doaStatuses.assignAll(doaStatus); // Simpan hasil ke dalam observable list
+  } catch (e) {
+    Get.snackbar('Error', e.toString());
+  } finally {
+    isLoading.value = false;
+  }
+}
+```
+
+**Status Features:**
+- **Cross-reference Data**: Combine perjalanan ID dan progress ID
+- **Local Storage Integration**: Fetch IDs dari SharedPreferences
+- **Reactive Updates**: Update observable list untuk UI
+- **Error Feedback**: User-friendly error notifications
+</Accordion>
+
+<Accordion title="Progress Operations">
+```dart
+Future<void> postProgressDoa(String doaId) async {
+  final progressId = await RoomDataSharedPreferenceService.getProgressPerjalananId();
+  try {
+    isLoading.value = true;
+    var response = await _service.postProgressDoa(progressId!, doaId);
+    progressData.value = response;
+    print('ini progressId untuk postProgressDoa: $progressId');
+    print('progressData: $progressData');
+  } catch (e) {
+    // Handle error silently untuk better UX
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+Future<void> updateProgressDoa(String progressDoaId) async {
+  print('ini progress doa id: $progressDoaId');
+  try {
+    isLoading.value = true;
+    var response = await _service.updateProgressDoa(progressDoaId);
+    progressData.value = response;
+    print('response update progress doa : $response');
+  } catch (e) {
+    // Handle error silently
+  } finally {
+    isLoading.value = false;
+  }
+}
+```
+
+**Operation Features:**
+- **Create Progress**: Post new prayer progress entries
+- **Update Progress**: Mark prayers as completed
+- **Response Handling**: Store API responses untuk further processing
+- **Silent Error Handling**: Avoid UI disruption dengan silent catch
+</Accordion>
+
+### RoomController
+
+**Path:** `lib/features/room/controllers/player-Controller/room_controller.dart`
+
+Main controller untuk room operations dengan role-based authentication dan token management.
+
+#### Key Features:
+- **Role-based Access**: Different token handling untuk ustadz/user
+- **Token Management**: Automatic token fetching dan storage
+- **Room Data Management**: Coordinate room information
+- **Error Handling**: Comprehensive error tracking
+
+#### Properties:
+
+<Accordion title="Room State Management">
+```dart
+final RoomServices _apiServiceRoom = RoomServices();
+
+var isLoading = false.obs;                     // Loading state
+var errorMessage = ''.obs;                     // Error tracking
+var roomData = Rxn<RoomModelResponse>();       // Room information
+var authToken = ''.obs;                        // Current auth token
+```
+</Accordion>
+
+#### Core Methods:
+
+<Accordion title="Role-based Token Management">
+```dart
+Future<void> setAuthToken() async {
+  isLoading.value = true;
+  try {
+    final role = await SharedPreferencesService.getRole();
+
+    if (role == 'user') {
+      // Role user, hit API dan ambil token_listener
+      final roomResponse = await _apiServiceRoom.getRoomById();
+      authToken.value = roomResponse.room.tokenListener;
+      print('User Role: Token Listener set to ${authToken.value}');
+    } else if (role == 'ustadz') {
+      // Role ustadz, ambil token_speaker dari SharedPreferences
+      final roomResponse = await _apiServiceRoom.getRoomById();
+      authToken.value = roomResponse.room.tokenSpeaker;
+      print('Ustadz Role: Token Speaker set to ${authToken.value}');
+    } else {
+      errorMessage.value = 'Role tidak dikenal.';
+      print(errorMessage.value);
+    }
+  } catch (e) {
+    errorMessage.value = 'Error saat mengambil token: $e';
+    print(errorMessage.value);
+  } finally {
+    isLoading.value = false;
+  }
+}
+```
+
+**Token Features:**
+- **Role Detection**: Automatic role-based token selection
+- **Token_Listener**: Untuk user role (listening only)
+- **Token_Speaker**: Untuk ustadz role (can speak)
+- **Error Tracking**: Detailed error logging dan user feedback
+</Accordion>
+
+<Accordion title="User-specific Room Data">
+```dart
+Future<void> fetchRoomDataForUser() async {
+  isLoading.value = true;
+  errorMessage.value = '';
+
+  try {
+    final role = await SharedPreferencesService.getRole();
+
+    // Jika role adalah 'user', maka hit API untuk mengambil data room
+    if (role == 'user') {
+      // Pastikan token sudah ada di SharedPreferences sebelum lanjut
+      final token = await RoomDataSharedPreferenceService.getTokenSpeaker();
+
+      if (token == null) {
+        // Token tidak ada, jadi kita perlu mendapatkan token dulu dari API
+        final response = await _apiServiceRoom.getRoomById();
+        roomData.value = response;
+        // Simpan token ke SharedPreferences
+        await RoomDataSharedPreferenceService.saveTokenSpeakerUser(
+            response.room.tokenSpeaker);
+        print('Room Data: ${response.room.namaRoom}');
+      } else {
+        // Token sudah ada, lanjutkan penggunaan token
+        print('Token sudah ada: $token');
+      }
+    } else {
+      errorMessage.value = 'Role bukan user. Tidak perlu mengambil data room.';
+      print(errorMessage.value);
+    }
+  } catch (e) {
+    errorMessage.value = 'Terjadi kesalahan: $e';
+    print(errorMessage.value);
+  } finally {
+    isLoading.value = false;
+  }
+}
+```
+
+**Room Data Features:**
+- **User-specific Logic**: Only fetch untuk user role
+- **Token Persistence**: Save tokens untuk future use
+- **Cache Check**: Avoid redundant API calls
+- **Room Information**: Store complete room details
+</Accordion>
+
+### RoomRefreshTokenController
+
+**Path:** `lib/features/room/controllers/player-Controller/room_refresh_token_controller.dart`
+
+Lightweight controller untuk token refresh operations.
+
+<Accordion title="Token Refresh Logic">
+```dart
+class RoomRefreshTokenController extends GetxController {
+  final RoomServices _getRoomService = RoomServices();
+
+  Future<void> getRoomRefreshToken() async {
+    await _getRoomService.refreshAndSaveTokenSpeaker();
+  }
+}
+```
+
+**Refresh Features:**
+- **Simple Interface**: Single method untuk token refresh
+- **Service Delegation**: Delegate complex logic ke service layer
+- **Automatic Storage**: Token auto-saved setelah refresh
+</Accordion>
+
+---
+
+## 📊 Models & Data Structures
+
+### RoomModel
+
+**Path:** `lib/features/room/models/room_model.dart`
+
+<Accordion title="Room Data Structure">
+```dart
+class RoomModelResponse {
+  final String status;
+  final String message;
+  final RoomDataModel room;
+
+  RoomModelResponse({
+    required this.status,
+    required this.message,
+    required this.room,
+  });
+
+  factory RoomModelResponse.fromJson(Map<String, dynamic> json) {
+    return RoomModelResponse(
+      status: json['status'] as String,
+      message: json['message'] as String,
+      room: RoomDataModel.fromJson(json['room'] as Map<String, dynamic>),
+    );
+  }
+}
+
+class RoomDataModel {
+  final String id;
+  final String namaRoom;
+  final String tokenSpeaker;
+  final String tokenListener;
+
+  RoomDataModel({
+    required this.id,
+    required this.namaRoom,
+    required this.tokenSpeaker,
+    required this.tokenListener,
+  });
+
+  factory RoomDataModel.fromJson(Map<String, dynamic> json) {
+    return RoomDataModel(
+      id: json['id'] as String,
+      namaRoom: json['nama_room'] as String,
+      tokenSpeaker: json['token_speaker'] as String,
+      tokenListener: json['token_listener'] as String,
+    );
+  }
+}
+```
+
+**Room Features:**
+- **Response Wrapper**: Standard API response format
+- **Dual Tokens**: Separate tokens untuk speaker dan listener
+- **Room Identification**: ID dan nama untuk room management
+- **Type Safety**: Proper type casting dari JSON
+</Accordion>
+
+### PeerTrackNode
+
+**Path:** `lib/features/room/models/peer_track_node.dart`
+
+<Accordion title="HMS Peer Tracking">
+```dart
+class PeerTrackNode {
+  String uid;
+  HMSPeer peer;
+  bool isRaiseHand;
+  HMSTrack? audioTrack;
+
+  PeerTrackNode({
+    required this.uid,
+    required this.peer,
+    this.audioTrack,
+    this.isRaiseHand = false,
+  });
+
+  @override
+  String toString() {
+    return 'PeerTrackNode{uid: $uid, peerId: ${peer.peerId},track: $audioTrack}';
+  }
+}
+```
+
+**Peer Features:**
+- **HMS Integration**: Direct integration dengan HMS SDK types
+- **Audio Tracking**: Optional audio track untuk each peer
+- **Interaction State**: Raise hand functionality
+- **Debug Support**: toString() method untuk debugging
+</Accordion>
+
+---
+
+## 🔧 Services
+
+### RoomServices
+
+**Path:** `lib/features/room/services/room_service.dart`
+
+Main service untuk room operations dengan token management dan API communication.
+
+<Accordion title="Token Refresh Operations">
+```dart
+Future<void> refreshAndSaveTokenSpeaker() async {
+  try {
+    final token = await SharedPreferencesService.getToken();
+    final roomId = await SharedPreferencesService.getRoomid();
+
+    if (roomId == null || token == null) {
+      debugPrint('Room ID or Token is null.');
+      throw Exception('Room ID or Token is null.');
+    }
+
+    final response = await _dio.post(
+      Endpoints.baseUrl2 + Endpoints.urlRoomRefresh,
+      options: Options(
+        headers: {'token': token},
+      ),
+      data: {'room_Id': roomId},
+    );
+
+    if (response.statusCode == 200) {
+      final data = response.data;
+      if (data != null && data['room'] != null) {
+        final tokenSpeaker = data['room']['token_speaker'];
+        if (tokenSpeaker != null) {
+          await SharedPreferencesService.saveTokenSpeaker(tokenSpeaker as String);
+        } else {
+          throw Exception('Token speaker tidak ditemukan di respons API');
+        }
+      } else {
+        throw Exception('Data room tidak valid dalam respons API');
+      }
+    } else if (response.statusCode == 500) {
+      throw Exception('Server error: ${response.data}');
+    } else {
+      throw Exception('API gagal dengan status code: ${response.statusCode}');
+    }
+  } catch (e) {
+    print('Terjadi kesalahan: $e');
+  }
+}
+```
+
+**Refresh Features:**
+- **Secure Headers**: Token-based authentication
+- **Error Handling**: Comprehensive error checking
+- **Automatic Storage**: Auto-save refreshed token
+- **Status Validation**: Check multiple response scenarios
+</Accordion>
+
+<Accordion title="Room Data Fetching">
+```dart
+Future<RoomModelResponse> getRoomById() async {
+  final token = await SharedPreferencesService.getToken();
+  final roomId = await SharedPreferencesService.getRoomid();
+
+  if (token == null || roomId == null) {
+    throw Exception('Token atau Room ID tidak ditemukan.');
+  }
+
+  try {
+    final response = await _dio.get(
+      '${Endpoints.baseUrl2}api/Audio/getRoomById?room_Id=$roomId',
+      options: Options(
+        headers: {'token': token},
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      final jsonData = response.data as Map<String, dynamic>;
+      final roomResponse = RoomModelResponse.fromJson(jsonData);
+
+      // Simpan token_speaker dan token_listener ke SharedPreferences
+      await RoomDataSharedPreferenceService.saveTokenSpeakerUser(
+        roomResponse.room.tokenSpeaker,
+      );
+      await RoomDataSharedPreferenceService.saveTokenListener(
+        roomResponse.room.tokenListener,
+      );
+
+      print('Token Speaker dan Listener berhasil disimpan');
+      return roomResponse;
+    } else {
+      throw Exception('Error: ${response.statusCode}, ${response.data}');
+    }
+  } catch (e) {
+    print('Terjadi kesalahan: $e');
+    throw Exception('Terjadi kesalahan saat memuat data: $e');
+  }
+}
+```
+
+**Fetch Features:**
+- **Query Parameters**: Room ID-based data fetching
+- **Dual Token Storage**: Save both speaker dan listener tokens
+- **Model Conversion**: Convert JSON ke typed models
+- **Local Persistence**: Auto-save tokens untuk future use
+</Accordion>
+
+### ProgressDoaService
+
+**Path:** `lib/features/room/services/progress_doa_service.dart`
+
+Service untuk prayer progress operations dengan comprehensive API endpoints.
+
+<Accordion title="Prayer Status Operations">
+```dart
+Future<List<Map<String, dynamic>>> fetchDoaTitlesByPerjalananId(
+    String perjalananId, String progressId) async {
+  print('ini perjalanan id: $perjalananId');
+  print('ini progressid: $progressId');
+  try {
+    final response = await _dio.get('/Doa/status-doa/$perjalananId/$progressId');
+
+    if (response.statusCode == 200) {
+      print("Response status: ${response.statusCode}");
+      print("Response data: ${response.data}");
+
+      return List<Map<String, dynamic>>.from(response.data);
+    } else {
+      throw Exception("Error: ${response.statusCode}");
+    }
+  } catch (e) {
+    throw Exception("Error loading API data: $e");
+  }
+}
+
+Future<Map<String, dynamic>> postProgressDoa(
+    String progressId, String doaId) async {
+  print('post progress doa dengan progressId: $progressId, dan doaId: $doaId');
+  try {
+    Response response = await _dio.post('/progressDoa', data: {
+      "progressid": progressId,
+      "doaid": doaId,
+    });
+    return response.data;
+  } catch (e) {
+    print('Failed to post progress doa: $e');
+    throw Exception('Failed to post progress doa: $e');
+  }
+}
+
+Future<Map<String, dynamic>> updateProgressDoa(String progressDoaId) async {
+  try {
+    final response = await _dio.put('/progressDoa/$progressDoaId');
+    return response.data;
+  } catch (e) {
+    throw Exception('Failed to update progress doa: $e');
+  }
+}
+```
+
+**Progress Features:**
+- **Status Fetching**: Get current prayer completion status
+- **Progress Creation**: Create new progress entries
+- **Progress Updates**: Mark prayers as completed
+- **Debug Logging**: Comprehensive request/response logging
+</Accordion>
+
+---
+
+## 💾 Local Data Management
+
+### RoomDataSharedPreferenceService
+
+**Path:** `lib/features/room/services/local/room_data.dart`
+
+Comprehensive local storage service untuk room-related data persistence.
+
+<Accordion title="Token Management">
+```dart
+// Speaker Token Management
+static Future<void> saveTokenSpeakerUser(String token) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('token_speaker', token);
+}
+
+static Future<String?> getTokenSpeaker() async {
+  final prefs = await SharedPreferences.getInstance();
+  final tokenSpeaker = prefs.getString('token_speaker');
+  return tokenSpeaker;
+}
+
+static Future<void> clearTokenSpeaker() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('token_speaker');
+}
+
+// Listener Token Management
+static Future<void> saveTokenListener(String token) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('token_listener', token);
+}
+
+static Future<String?> getTokenListener() async {
+  final prefs = await SharedPreferences.getInstance();
+  final tokenListener = prefs.getString('token_listener');
+  return tokenListener;
+}
+
+static Future<void> clearTokenListener() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('token_listener');
+}
+```
+
+**Token Features:**
+- **Dual Token Support**: Separate storage untuk speaker/listener tokens
+- **CRUD Operations**: Complete create, read, dan delete operations
+- **Data Validation**: Check existing data sebelum save
+- **Clean Interface**: Consistent method naming patterns
+</Accordion>
+
+<Accordion title="Progress ID Management">
+```dart
+// Progress ID Management
+static Future<void> saveProgressPerjalananId(String idProgress) async {
+  final prefs = await SharedPreferences.getInstance();
+  final storedId = prefs.getString('id_progress');
+
+  // Cek apakah id_progress yang disimpan sudah ada dan sama dengan yang baru
+  if (storedId != idProgress) {
+    // Hapus id_progress yang lama sebelum menyimpan yang baru
+    await prefs.remove('id_progress');
+    
+    // Simpan id_progress yang baru
+    await prefs.setString('id_progress', idProgress);
+  }
+}
+
+static Future<String?> getProgressPerjalananId() async {
+  final prefs = await SharedPreferences.getInstance();
+  final idProgress = prefs.getString('id_progress');
+  return idProgress;
+}
+
+static Future<void> clearProgressPerjalananId() async {
+  final prefs = await SharedPreferences.getInstance();
+  final success = await prefs.remove('id_progress');
+  print('Menghapus id_progress, success: $success');
+}
+```
+
+**Progress Features:**
+- **Smart Updates**: Only save jika data berbeda
+- **Clean Replace**: Remove old data sebelum save new
+- **Debug Support**: Logging untuk operations tracking
+- **Null Safety**: Proper handling untuk missing data
+</Accordion>
+
+<Accordion title="Journey State Management">
+```dart
+// Current Perjalanan Management
+static Future<void> saveCurrentPerjalananId(String idPerjalanan) async {
+  final prefs = await SharedPreferences.getInstance();
+  final success = await prefs.setString('id_perjalanan', idPerjalanan);
+  print('Menyimpan id perjalanan, success: $success');
+}
+
+static Future<String?> getCurrentPerjalananId() async {
+  final prefs = await SharedPreferences.getInstance();
+  final success = prefs.getString('id_perjalanan');
+  print('Mengambil id perjalanan, success: $success');
+  return success;
+}
+
+static Future<void> clearCurrentPerjalananId() async {
+  final prefs = await SharedPreferences.getInstance();
+  final success = await prefs.remove('id_perjalanan');
+  print('Menghapus id perjalanan, success: $success');
+}
+
+// Journey Type State Management
+static Future<void> saveManasik(String jenisPerjalanan, bool isFinished) async {
+  final prefs = await SharedPreferences.getInstance();
+
+  // Periksa apakah data sudah ada
+  final existingJenisPerjalanan = prefs.getString('manasik_jenis_perjalanan');
+  final existingStatus = prefs.getBool('manasik_isFinished');
+
+  if (existingJenisPerjalanan == jenisPerjalanan && existingStatus == isFinished) {
+    print('Data Manasik sudah ada, tidak perlu disimpan ulang.');
+    return;
+  }
+
+  // Simpan jika data belum ada atau berbeda
+  await prefs.setString('manasik_jenis_perjalanan', jenisPerjalanan);
+  await prefs.setBool('manasik_isFinished', isFinished);
+  print('Data Manasik disimpan: jenis_perjalanan = $jenisPerjalanan, isFinished = $isFinished');
+}
+```
+
+**Journey Features:**
+- **Journey Tracking**: Current journey ID management
+- **Type-specific Storage**: Different storage untuk journey types
+- **Duplicate Prevention**: Avoid saving sama data twice
+- **Boolean Support**: Proper type handling untuk completion status
+</Accordion>
+
+---
+
+## 🎨 Views & UI Components
+
+### MeetingPage
+
+**Path:** `lib/features/room/views/meeting_page.dart`
+
+Main HMS SDK integration screen dengan comprehensive peer management dan audio controls.
+
+<Accordion title="HMS SDK Integration">
+```dart
+class _MeetingPageState extends State<MeetingPage>
+    implements HMSUpdateListener, HMSActionResultListener {
+  late HMSSDK _hmsSDK;
+  final RoomController _authController = Get.put(RoomController());
+
+  //Enter the username and authToken from dashboard for the corresponding role here.
+  String? userName;
+  String? iduser;
+  String? roleid;
+  String? apikey;
+  String? role;
+  final userRole = SharedPreferencesService.getRole();
+  bool isLoadingRole = true;
+
+  String roomCode = "yim-wofo-ytk";
+  Offset position = const Offset(5, 5);
+  bool isJoinSuccessful = false;
+  final List<PeerTrackNode> _listeners = [];
+  final List<PeerTrackNode> _speakers = [];
+  bool _isMicrophoneMuted = false;
+  HMSPeer? _localPeer;
+
+  void initHMSSDK() async {
+    _hmsSDK = HMSSDK();
+    await _hmsSDK.build();
+    _hmsSDK.addUpdateListener(listener: this);
+    var authToken = _authController.authToken.value;
+    if ((authToken is String?)) {
+      _hmsSDK.join(config: HMSConfig(authToken: authToken, userName: userName!));
+    } else {
+      log("Error in getting auth token");
+    }
+  }
+}
+```
+
+**HMS Features:**
+- **SDK Integration**: Full HMS SDK setup dan initialization
+- **Role Management**: Speaker/Listener role differentiation
+- **Peer Tracking**: Separate lists untuk speakers dan listeners
+- **Audio Controls**: Microphone mute/unmute functionality
+- **Real-time Updates**: HMS update listener implementation
+</Accordion>
+
+<Accordion title="Peer Management System">
+```dart
+@override
+void onPeerUpdate({required HMSPeer peer, required HMSPeerUpdate update}) {
+  if (peer.isLocal) {
+    _localPeer = peer;
+  }
+  switch (update) {
+    case HMSPeerUpdate.peerJoined:
+      switch (peer.role.name) {
+        case "speaker":
+          int index = _speakers.indexWhere((node) => node.uid == "${peer.peerId}speaker");
+          if (index != -1) {
+            _speakers[index].peer = peer;
+          } else {
+            _speakers.add(PeerTrackNode(
+              uid: "${peer.peerId}speaker",
+              peer: peer,
+            ));
+          }
+          setState(() {});
+          break;
+        case "listener":
+          int index = _listeners.indexWhere((node) => node.uid == "${peer.peerId}listener");
+          if (index != -1) {
+            _listeners[index].peer = peer;
+          } else {
+            _listeners.add(PeerTrackNode(uid: "${peer.peerId}listener", peer: peer));
+          }
+          setState(() {});
+          break;
+      }
+      break;
+    case HMSPeerUpdate.peerLeft:
+      // Handle peer leaving logic...
+      break;
+    case HMSPeerUpdate.roleUpdated:
+      // Handle role change logic...
+      break;
+  }
+}
+```
+
+**Peer Features:**
+- **Dynamic Peer Management**: Add/remove peers based on join/leave
+- **Role-based Organization**: Separate handling untuk speakers dan listeners
+- **State Synchronization**: UI updates saat peer status changes
+- **Local Peer Tracking**: Special handling untuk local user
+</Accordion>
+
+---
+
+## 🔗 Integration Points
+
+### Authentication Integration
+
+<Accordion title="Role-based Token Access">
+```dart
+// Role detection dan token assignment
+final role = await SharedPreferencesService.getRole();
+
+if (role == 'user') {
+  authToken.value = roomResponse.room.tokenListener;
+} else if (role == 'ustadz') {
+  authToken.value = roomResponse.room.tokenSpeaker;
+}
+```
+
+**Auth Features:**
+- **Role Detection**: Automatic role identification dari auth module
+- **Token Differentiation**: Different tokens berdasarkan role
+- **Secure Access**: Token-based room access control
+</Accordion>
+
+### Group Module Integration
+
+<Accordion title="Progress Coordination">
+```dart
+// Coordinate dengan group progress
+final perjalananId = await RoomDataSharedPreferenceService.getCurrentPerjalananId();
+final progressId = await RoomDataSharedPreferenceService.getProgressPerjalananId();
+
+var doaStatus = await _service.fetchDoaTitlesByPerjalananId(perjalananId, progressId);
+```
+
+**Integration Features:**
+- **Journey Coordination**: Link dengan active group journey
+- **Progress Synchronization**: Real-time progress updates
+- **Shared State**: Common data access across modules
+</Accordion>
+
+---
+
+## 🚀 Usage Examples
+
+### Basic Room Setup
+
+<Accordion title="Initialize Room with HMS">
+```dart
+// Room controller initialization
+final RoomController roomController = Get.put(RoomController());
+
+// Set authentication token berdasarkan role
+await roomController.setAuthToken();
+
+// Initialize HMS SDK dengan token
+void initHMSSDK() async {
+  _hmsSDK = HMSSDK();
+  await _hmsSDK.build();
+  _hmsSDK.addUpdateListener(listener: this);
+  
+  var authToken = roomController.authToken.value;
+  _hmsSDK.join(config: HMSConfig(authToken: authToken, userName: userName));
+}
+```
+</Accordion>
+
+### Prayer Progress Tracking
+
+<Accordion title="Progress Management Implementation">
+```dart
+// Progress controller setup
+final ProgressDoaController progressController = Get.put(ProgressDoaController());
+
+// Fetch current prayer status
+await progressController.fetchDoaStatus();
+
+// Create new progress entry
+await progressController.postProgressDoa(doaId);
+
+// Update existing progress
+await progressController.updateProgressDoa(progressDoaId);
+
+// Listen to progress updates
+Obx(() {
+  if (progressController.doaStatuses.isNotEmpty) {
+    return ListView.builder(
+      itemCount: progressController.doaStatuses.length,
+      itemBuilder: (context, index) {
+        final doa = progressController.doaStatuses[index];
+        return DoaStatusCard(doa: doa);
+      },
+    );
+  }
+  return CircularProgressIndicator();
+})
+```
+</Accordion>
+
+---
+
+## ⚙️ Configuration & Setup
+
+### Dependencies
+
+<Accordion title="Required Packages">
+```yaml
+dependencies:
+  # State management
+  get: ^4.6.5                    # GetX untuk reactive state
+  
+  # HTTP & API
+  dio: ^5.3.2                    # HTTP client untuk API calls
+  
+  # HMS SDK
+  hmssdk_flutter: ^latest        # 100ms HMS SDK untuk audio room
+  
+  # Local storage
+  shared_preferences: ^2.2.0     # Local data persistence
+  
+  # Core dependencies
+  maqdis_connect/features/auth   # Authentication integration
+  maqdis_connect/features/group  # Group coordination
+  maqdis_connect/core/services   # Shared services
+```
+</Accordion>
+
+### HMS SDK Configuration
+
+<Accordion title="HMS Setup Requirements">
+```dart
+// HMS SDK initialization
+void initHMSSDK() async {
+  _hmsSDK = HMSSDK();
+  await _hmsSDK.build();
+  _hmsSDK.addUpdateListener(listener: this);
+  
+  // Role-based token dari room controller
+  var authToken = _authController.authToken.value;
+  
+  _hmsSDK.join(config: HMSConfig(
+    authToken: authToken,
+    userName: userName,
+  ));
+}
+
+// Required HMS listener implementations
+class _MeetingPageState extends State<MeetingPage>
+    implements HMSUpdateListener, HMSActionResultListener {
+  
+  @override
+  void onPeerUpdate({required HMSPeer peer, required HMSPeerUpdate update}) {
+    // Handle peer updates...
+  }
+  
+  @override
+  void onTrackUpdate({required HMSTrack track, required HMSTrackUpdate trackUpdate, required HMSPeer peer}) {
+    // Handle track updates...
+  }
+}
+```
+</Accordion>
+
+### API Endpoints
+
+<Accordion title="Room API Configuration">
+```dart
+class Endpoints {
+  static const String baseUrl2 = 'https://api.maqdisconnect.com';
+  
+  // Room endpoints
+  static const String urlRoomRefresh = '/api/Audio/refreshToken';
+  static const String getRoomByIdUrl = '/api/Audio/getRoomById';
+  
+  // Progress endpoints
+  static const String doaStatusUrl = '/api/Doa/status-doa';
+  static const String progressDoaUrl = '/api/progressDoa';
+}
+```
+</Accordion>
+
+---
+
+## 🔒 Security & Performance
+
+### Token Security
+
+<Accordion title="Security Best Practices">
+- **Role-based Access**: Different tokens untuk different permissions
+- **Token Refresh**: Automatic refresh untuk expired tokens
+- **Secure Storage**: Encrypted SharedPreferences storage
+- **Validation Checks**: Comprehensive token validation
+- **Error Handling**: Secure error messages tanpa token exposure
+</Accordion>
+
+### Performance Optimization
+
+<Accordion title="Optimization Strategies">
+- **Local Caching**: Token dan progress data caching
+- **Lazy Loading**: Load HMS SDK only saat needed
+- **Efficient Updates**: Minimize UI rebuilds dengan targeted updates
+- **Memory Management**: Proper peer list management
+- **Network Efficiency**: Minimize redundant API calls
+</Accordion>
+
+---
+
+## 📋 Error Handling
+
+### Common Error Scenarios
+
+<Accordion title="Error Management Strategies">
+```dart
+// Token validation errors
+if (token == null || roomId == null) {
+  throw Exception('Token atau Room ID tidak ditemukan.');
+}
+
+// HMS SDK errors
+if (!(authToken is String)) {
+  log("Error in getting auth token");
+  return;
+}
+
+// API response errors
+if (response.statusCode == 200) {
+  // Success handling...
+} else if (response.statusCode == 500) {
+  throw Exception('Server error: ${response.data}');
+} else {
+  throw Exception('API gagal dengan status code: ${response.statusCode}');
+}
+
+// Silent error handling untuk UX
+try {
+  var response = await _service.postProgressDoa(progressId!, doaId);
+  progressData.value = response;
+} catch (e) {
+  // Handle error silently untuk better UX
+}
+```
+
+**Error Strategies:**
+- **Graceful Degradation**: App tetap functional meski ada HMS errors
+- **Silent Handling**: Background errors tidak disrupt user experience
+- **Detailed Logging**: Comprehensive logging untuk debugging
+- **User-friendly Messages**: Convert technical errors ke readable messages
+</Accordion>
+
+---
+
+## 🔗 Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Player Module" href="/features/player" icon="play">
+    Audio playback dan HMS integration
+  </Card>
+  
+  <Card title="Group Module" href="/features/group" icon="users">
+    Group management dan live progress tracking
+  </Card>
+  
+  <Card title="Authentication System" href="/features/auth" icon="shield">
+    Role management dan token security
+  </Card>
+  
+  <Card title="HMS SDK Documentation" href="https://www.100ms.live/docs/flutter/v2/how--to-guides/install-the-sdk/hmssdk" icon="external-link">
+    Official HMS SDK documentation
+  </Card>
+</CardGroup>
+
+---
+
+<Info>
+**Note:** Room module menyediakan sophisticated audio communication system dengan HMS SDK integration. Module ini handle role-based authentication, real-time peer management, dan comprehensive prayer progress tracking dengan local data persistence.
+</Info>

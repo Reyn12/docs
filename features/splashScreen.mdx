@@ -1,4 +1,639 @@
 ---
-title: "Splash Screen"
-description: "Description of your new file."
+title: "Splash Screen Module"
+description: "Dokumentasi lengkap untuk splash screen dengan token validation, first-time user detection, dan animated transitions"
+icon: "rocket"
 ---
+
+# Splash Screen Module
+
+Modul splash screen menyediakan sistem startup yang elegant dengan token validation untuk authentication status, first-time user detection, animated transitions, dan smart navigation routing ke halaman yang tepat berdasarkan user state.
+
+## 🏗️ Arsitektur
+
+```
+lib/features/splash_screen/
+├── controllers/          # Business logic & state management
+│   └── user_checking_controller.dart   # Core splash logic & navigation
+├── services/             # API services & validation
+│   └── user_checking_service.dart      # Token validation service
+├── views/                # UI screens
+│   └── splash_screen.dart              # Main splash interface
+├── bindings/             # Dependency injection
+│   └── splash_screen_binding.dart      # GetX binding setup
+└── splash_screen.mdx    # Module documentation
+```
+
+## 🎯 Fitur Utama
+
+<CardGroup cols={2}>
+  <Card title="Authentication Flow" icon="shield-check">
+    - Token validation dengan backend
+    - Automatic login status checking
+    - Expired token cleanup
+    - Smart navigation routing
+  </Card>
+  
+  <Card title="First-time User Detection" icon="user-plus">
+    - SharedPreferences state tracking
+    - Onboarding flow detection
+    - Registration landing redirect
+    - User experience personalization
+  </Card>
+  
+  <Card title="Animated Transitions" icon="sparkles">
+    - Logo fade-in animation
+    - Loading indicator transitions
+    - Smooth opacity changes
+    - Professional startup experience
+  </Card>
+  
+  <Card title="Smart Navigation" icon="route">
+    - Token-based routing logic
+    - Home screen redirect untuk valid tokens
+    - Login screen untuk invalid/missing tokens
+    - Registration untuk first-time users
+  </Card>
+</CardGroup>
+
+---
+
+## 🎮 Controllers
+
+### UserCheckingController
+
+**Path:** `lib/features/splash_screen/controllers/user_checking_controller.dart`
+
+Main controller untuk splash screen logic dengan comprehensive authentication checking dan animated transitions.
+
+#### Key Features:
+- **Token Validation**: Backend validation untuk user authentication
+- **First-time Detection**: Smart user state detection
+- **Animation Control**: Smooth transitions dengan opacity management
+- **Navigation Logic**: Intelligent routing berdasarkan user status
+
+#### Properties:
+
+<Accordion title="Reactive Variables & Animation States">
+```dart
+final userCheckingService = UserCheckingService();
+
+var showLogo = false.obs;          // Logo visibility control
+var isLoading = false.obs;         // Loading state indicator
+var logoOpacity = 0.0.obs;         // Logo fade animation
+var loadingOpacity = 0.0.obs;      // Loading fade animation
+```
+</Accordion>
+
+#### Core Methods:
+
+<Accordion title="Authentication Status Checking">
+```dart
+Future<void> checkLoginStatus() async {
+  isLoading.value = true;
+
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString('token');
+
+  // Cek apakah token tersedia di penyimpanan lokal
+  if (token != null) {
+    // Jika token ada, validasi token dengan memanggil service
+    final isTokenValid = await userCheckingService.checkTokenValid();
+    if (!isTokenValid) {
+      // Jika token tidak valid (kadaluarsa/invalid)
+      print('Token sudah kadaluarsa, menghapus token...');
+      await prefs.remove('token');
+      // Arahkan ke halaman login dengan menghapus semua halaman sebelumnya
+      Get.offAll(() => const LoginScreen());
+    } else {
+      // Jika token masih valid
+      print('Token masih valid, mengarahkan ke Home...');
+      // Arahkan ke halaman utama dengan menghapus semua halaman sebelumnya
+      Get.offAll(() => Home());
+    }
+  } else {
+    // Jika tidak ada token di penyimpanan lokal
+    print('Tidak ada token yang valid, tetap di halaman login.');
+    // Arahkan ke halaman login dengan menghapus semua halaman sebelumnya
+    Get.offAll(() => const LoginScreen());
+  }
+
+  isLoading.value = false;
+}
+```
+
+**Authentication Features:**
+- **Token Existence Check**: Verify token presence di SharedPreferences
+- **Backend Validation**: Real-time token validation dengan API
+- **Token Cleanup**: Auto-remove expired tokens
+- **Smart Routing**: Navigate berdasarkan authentication status
+- **Navigation Stack Reset**: Use Get.offAll untuk clean navigation
+</Accordion>
+
+<Accordion title="First-time User Detection">
+```dart
+Future<void> checkIfUserIsFirstTimer() async {
+  final prefs = await SharedPreferences.getInstance();
+  final isUserFirstTimer = prefs.getBool('user_first_timer') ?? true;
+
+  if (isUserFirstTimer) {
+    Get.to(() => const RegisterLandingScreen());
+    prefs.setBool('user_first_timer', false);
+  } else {
+    await checkLoginStatus();
+  }
+}
+```
+
+**First-timer Features:**
+- **State Persistence**: Track first-time status dengan SharedPreferences
+- **Default Handling**: Assume first-time jika data tidak ada
+- **Onboarding Flow**: Direct ke registration landing untuk new users
+- **State Update**: Mark as non-first-timer setelah initial visit
+- **Fallback Logic**: Continue dengan login check untuk returning users
+</Accordion>
+
+<Accordion title="Splash Animation System">
+```dart
+void startSplashAnimation() {
+  Future.delayed(const Duration(milliseconds: 500), () {
+    showLogo.value = true;
+    logoOpacity.value = 1.0;
+  });
+
+  Future.delayed(const Duration(milliseconds: 500), () {
+    isLoading.value = true;
+    loadingOpacity.value = 1.0;
+    Future.delayed(const Duration(seconds: 3), () {
+      checkIfUserIsFirstTimer(); // Pindahkan proses pengecekan ke sini
+    });
+  });
+}
+
+@override
+onInit() {
+  super.onInit();
+  Future.delayed(const Duration(seconds: 1), () {
+    startSplashAnimation();
+  });
+}
+```
+
+**Animation Features:**
+- **Staged Animations**: Sequential logo dan loading animations
+- **Opacity Transitions**: Smooth fade-in effects
+- **Timing Control**: Precise delay management dengan Future.delayed
+- **User Experience**: Professional startup sequence
+- **Initialization Delay**: 1-second initial delay untuk smooth startup
+</Accordion>
+
+---
+
+## 🔧 Services
+
+### UserCheckingService
+
+**Path:** `lib/features/splash_screen/services/user_checking_service.dart`
+
+Simple but effective service untuk token validation dengan backend API.
+
+<Accordion title="Token Validation API">
+```dart
+Future<bool> checkTokenValid() async {
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString('token'); // ini token dari api backend
+  try {
+    final response = await Dio().get(
+      Endpoints.baseUrl2 + Endpoints.checkToken,
+      options: Options(
+        headers: {
+          'token': token,
+        },
+      ),
+    );
+
+    if (response.statusCode == 200 &&
+        response.data['msg'] == 'Access to protected route granted') {
+      return true; // Token is valid
+    }
+    return false; // Token is invalid
+  } catch (e) {
+    print('Error validating token: $e');
+    return false; // Assume token is invalid if an error occurs
+  }
+}
+```
+
+**Validation Features:**
+- **Header Authentication**: Send token via headers untuk security
+- **Response Validation**: Check both status code dan message content
+- **Error Handling**: Graceful failure dengan false return
+- **Network Safety**: Handle network issues dengan proper catch
+- **Conservative Approach**: Assume invalid saat error untuk security
+</Accordion>
+
+---
+
+## 🎨 Views & UI Components
+
+### SplashScreen
+
+**Path:** `lib/features/splash_screen/views/splash_screen.dart`
+
+Beautiful splash screen dengan gradient background, logo animation, dan loading indicators.
+
+<Accordion title="Visual Design System">
+```dart
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: GlobalColors.mainColor,
+    body: Stack([
+      // Gradient Background
+      Container(
+        height: double.infinity,
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment(-0.19, -1.0),
+            end: Alignment(0.19, 1.0),
+            colors: [
+              Color(0xFF1D8CC6),
+              Color(0xFF43A5D9),
+              Color(0xFF1D8CC6),
+            ],
+            stops: [0.0, 0.5, 1.0],
+          ),
+        ),
+      ),
+      
+      // Top Decorative Element
+      Positioned(
+        left: 0,
+        top: 60,
+        child: Transform.translate(
+          offset: const Offset(-10, 0),
+          child: Container(
+            height: MediaQuery.of(context).size.height / 5,
+            width: MediaQuery.of(context).size.width / 2,
+            decoration: const BoxDecoration(
+              image: DecorationImage(
+                  image: AssetImage('assets/comp_top.png'),
+                  fit: BoxFit.contain),
+            ),
+          ),
+        ),
+      ),
+      
+      // Bottom Mosque Silhouette
+      Positioned(
+        bottom: 0,
+        child: Container(
+          width: MediaQuery.of(context).size.width,
+          height: MediaQuery.of(context).size.height * 0.25,
+          decoration: const BoxDecoration(
+            image: DecorationImage(
+              image: AssetImage('assets/mosque_silhouette.png'),
+              fit: BoxFit.cover,
+              alignment: Alignment.bottomCenter,
+            ),
+          ),
+        ),
+      ),
+    ]),
+  );
+}
+```
+
+**Design Features:**
+- **Gradient Background**: Professional blue gradient dengan multiple stops
+- **Layered Composition**: Stack layout untuk complex visual hierarchy
+- **Islamic Theming**: Mosque silhouette untuk contextual branding
+- **Responsive Sizing**: MediaQuery-based sizing untuk different screens
+- **Decorative Elements**: Top ornamental component untuk visual appeal
+</Accordion>
+
+<Accordion title="Animated Components">
+```dart
+// Animated Logo
+Obx(() => userCheckingController.showLogo.value
+    ? Center(
+        child: WAnimatedFade(
+          child: Image.asset(
+            'assets/logo.png',
+            height: 40,
+          ),
+        ),
+      )
+    : const SizedBox()),
+
+// Animated Loading Indicator
+Obx(() => userCheckingController.isLoading.value
+    ? const Positioned(
+        bottom: 250,
+        left: 0,
+        right: 0,
+        child: Center(
+          child: WAnimatedFade(child: WLoadingAnimation()),
+        ),
+      )
+    : const SizedBox()),
+```
+
+**Animation Features:**
+- **Reactive Animations**: Obx untuk responsive animation control
+- **Custom Fade Widget**: WAnimatedFade untuk smooth transitions
+- **Conditional Rendering**: Show/hide based pada controller state
+- **Positioned Layout**: Precise placement untuk loading indicator
+- **Clean Fallbacks**: SizedBox untuk hidden states
+</Accordion>
+
+---
+
+## 🔗 Integration Points
+
+### Authentication Module Integration
+
+<Accordion title="Login Flow Coordination">
+```dart
+// Navigate to login screen untuk invalid tokens
+Get.offAll(() => const LoginScreen());
+
+// Navigate to home untuk valid tokens
+Get.offAll(() => Home());
+
+// Navigate to registration untuk first-time users
+Get.to(() => const RegisterLandingScreen());
+```
+
+**Auth Integration Features:**
+- **Login Screen**: Direct navigation untuk authentication
+- **Home Screen**: Main app navigation untuk authenticated users
+- **Registration Flow**: Onboarding untuk new users
+- **Stack Management**: Clean navigation history dengan Get.offAll
+</Accordion>
+
+### Core Module Integration
+
+<Accordion title="Shared Components & Services">
+```dart
+// Use shared animated components
+import 'package:maqdis_connect/core/common/widgets/w_animated_fade.dart';
+import 'package:maqdis_connect/core/common/widgets/w_loading_animation.dart';
+
+// Use global color scheme
+import 'package:maqdis_connect/core/utils/global.colors.dart';
+
+// Use shared service endpoints
+import 'package:maqdis_connect/core/services/endpoints.dart';
+```
+
+**Core Integration Features:**
+- **Shared Widgets**: Reuse animated components untuk consistency
+- **Global Styling**: Use shared color scheme
+- **Common Services**: Shared endpoint configuration
+- **Design System**: Consistent UI components across app
+</Accordion>
+
+---
+
+## 🚀 Usage Examples
+
+### Basic Splash Setup
+
+<Accordion title="Initialize Splash Screen">
+```dart
+// Route configuration
+GetPage(
+  name: '/splash',
+  page: () => SplashScreen(),
+  binding: SplashScreenBinding(),
+),
+
+// Navigation to splash (typically app startup)
+Get.toNamed('/splash');
+```
+</Accordion>
+
+### Custom Animation Timing
+
+<Accordion title="Modify Animation Sequence">
+```dart
+void startCustomSplashAnimation() {
+  // Custom logo delay
+  Future.delayed(const Duration(milliseconds: 800), () {
+    showLogo.value = true;
+    logoOpacity.value = 1.0;
+  });
+
+  // Custom loading delay
+  Future.delayed(const Duration(milliseconds: 1200), () {
+    isLoading.value = true;
+    loadingOpacity.value = 1.0;
+    
+    // Extended display time
+    Future.delayed(const Duration(seconds: 5), () {
+      checkIfUserIsFirstTimer();
+    });
+  });
+}
+```
+</Accordion>
+
+### Token Validation Override
+
+<Accordion title="Custom Token Validation">
+```dart
+Future<void> customTokenCheck() async {
+  // Custom validation logic
+  final isValid = await userCheckingService.checkTokenValid();
+  
+  if (isValid) {
+    // Custom success handling
+    Get.snackbar('Welcome Back', 'Login successful');
+    Get.offAll(() => Home());
+  } else {
+    // Custom failure handling
+    Get.snackbar('Session Expired', 'Please login again');
+    Get.offAll(() => const LoginScreen());
+  }
+}
+```
+</Accordion>
+
+---
+
+## ⚙️ Configuration & Setup
+
+### Dependencies
+
+<Accordion title="Required Packages">
+```yaml
+dependencies:
+  # State management
+  get: ^4.6.5                    # GetX untuk reactive state
+  
+  # HTTP & API
+  dio: ^5.3.2                    # HTTP client untuk token validation
+  
+  # Local storage
+  shared_preferences: ^2.2.0     # Token dan user state persistence
+  
+  # UI components
+  flutter/material.dart          # Material design components
+  
+  # Core dependencies
+  maqdis_connect/core/common     # Shared widgets dan animations
+  maqdis_connect/core/utils      # Global colors dan utilities
+  maqdis_connect/features/auth   # Authentication integration
+```
+</Accordion>
+
+### API Endpoints
+
+<Accordion title="Token Validation Configuration">
+```dart
+class Endpoints {
+  static const String baseUrl2 = 'https://api.maqdisconnect.com';
+  static const String checkToken = '/api/auth/check-token';
+  
+  // Full endpoint untuk token validation
+  static String get tokenValidationUrl => baseUrl2 + checkToken;
+}
+```
+</Accordion>
+
+### SharedPreferences Keys
+
+<Accordion title="Local Storage Configuration">
+```dart
+// Authentication token
+const String tokenKey = 'token';
+
+// First-time user flag
+const String firstTimerKey = 'user_first_timer';
+
+// Usage examples
+final prefs = await SharedPreferences.getInstance();
+
+// Check token
+final token = prefs.getString(tokenKey);
+
+// Check first-timer status
+final isFirstTimer = prefs.getBool(firstTimerKey) ?? true;
+
+// Update first-timer status
+await prefs.setBool(firstTimerKey, false);
+```
+</Accordion>
+
+---
+
+## 🔒 Security & Performance
+
+### Security Best Practices
+
+<Accordion title="Token Security">
+- **Header-based Authentication**: Send tokens via secure headers
+- **Conservative Validation**: Assume invalid pada network errors
+- **Automatic Cleanup**: Remove expired tokens immediately
+- **No Token Logging**: Avoid logging sensitive token data
+- **Secure Storage**: Use SharedPreferences untuk token persistence
+</Accordion>
+
+### Performance Optimization
+
+<Accordion title="Optimization Strategies">
+- **Lazy Loading**: Controller loaded only saat needed
+- **Efficient Animations**: Lightweight opacity-based transitions
+- **Single API Call**: One token validation per startup
+- **Memory Management**: Proper controller disposal dengan GetX
+- **Fast Navigation**: Minimize splash screen duration
+</Accordion>
+
+---
+
+## 📋 Error Handling
+
+### Common Error Scenarios
+
+<Accordion title="Error Management">
+```dart
+// Network connectivity issues
+try {
+  final response = await Dio().get(endpoint);
+  // Process response...
+} catch (e) {
+  print('Error validating token: $e');
+  return false; // Conservative approach for security
+}
+
+// Token missing scenarios
+final token = prefs.getString('token');
+if (token == null) {
+  // Handle missing token gracefully
+  Get.offAll(() => const LoginScreen());
+  return;
+}
+
+// First-time user detection
+final isUserFirstTimer = prefs.getBool('user_first_timer') ?? true;
+// Default to true jika data tidak ada
+```
+
+**Error Strategies:**
+- **Graceful Degradation**: App tetap functional meski ada network issues
+- **Conservative Security**: Assume invalid tokens saat error
+- **Default Handling**: Sensible defaults untuk missing data
+- **User Feedback**: Clear navigation cues untuk error states
+</Accordion>
+
+---
+
+## 🎨 UI/UX Best Practices
+
+### Animation Guidelines
+
+<Accordion title="Animation Best Practices">
+- **Progressive Disclosure**: Logo terlebih dahulu, kemudian loading
+- **Appropriate Timing**: 500ms intervals untuk smooth experience
+- **Smooth Transitions**: Opacity-based animations untuk performance
+- **Visual Hierarchy**: Center logo, bottom loading indicator
+- **Brand Consistency**: Use global colors dan styling
+</Accordion>
+
+### Navigation Flow
+
+<Accordion title="Navigation Best Practices">
+- **Clean Stack**: Use Get.offAll untuk fresh navigation
+- **Logical Flow**: First-timer → Registration, Returning → Login/Home
+- **Fast Transitions**: Minimize splash screen time
+- **Clear Intent**: Obvious next steps untuk users
+- **Consistent Routing**: Use named routes untuk maintainability
+</Accordion>
+
+---
+
+## 🔗 Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Authentication Module" href="/features/auth" icon="shield">
+    Login, registration, dan token management
+  </Card>
+  
+  <Card title="Core Widgets" href="/core/widgets" icon="puzzle-piece">
+    Shared animated components dan UI elements
+  </Card>
+  
+  <Card title="Navigation System" href="/core/navigation" icon="route">
+    GetX routing dan navigation patterns
+  </Card>
+  
+  <Card title="Global Colors" href="/core/utils" icon="palette">
+    App-wide color scheme dan utilities
+  </Card>
+</CardGroup>
+
+---
+
+<Info>
+**Note:** Splash Screen module menyediakan professional app startup experience dengan comprehensive authentication checking, smooth animations, dan intelligent routing. Module ini adalah entry point utama app yang menentukan user flow berdasarkan authentication status.
+</Info>

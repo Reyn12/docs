@@ -1,4 +1,1145 @@
 ---
-title: "Profile"
-description: "Description of your new file."
+title: "Profile Module"
+description: "Dokumentasi lengkap untuk fitur manajemen profil user, edit profil, dan sistem hapus akun dengan validasi OTP"
+icon: "user"
 ---
+
+# Profile Module
+
+Modul profile menyediakan sistem manajemen profil user yang komprehensif dengan fitur edit profil, photo picker, dan delete account flow yang aman dengan validasi OTP. Module ini terintegrasi dengan authentication system dan menyediakan UI yang user-friendly.
+
+## 🏗️ Arsitektur
+
+```
+lib/features/profile/
+├── controllers/          # Business logic & state management
+│   ├── profile_controller.dart         # Core profile management
+│   └── reason_controller.dart          # Delete account reasons
+├── models/               # Data structures
+│   ├── user_profile_model.dart         # User profile data model
+│   └── reason_model.dart               # Delete account reason model
+├── services/             # API services & data layer
+│   ├── profile_services.dart           # Profile CRUD operations
+│   ├── delete_account_services.dart    # Account deletion API
+│   └── reason_services.dart            # Reason fetching API
+├── views/                # UI screens
+│   ├── profile_screen_new.dart         # Main profile screen
+│   ├── delete_account_screen.dart      # Delete account flow
+│   ├── delete_account_success.screen.dart # Success confirmation
+│   └── detail_edit_profile_screen.dart # Profile editing form
+├── widgets/              # Reusable components
+│   ├── profile_build_info.dart         # Profile info card
+│   ├── reason_form_body.dart           # Delete reason selection
+│   ├── botom_modal_profile.dart        # Photo picker modal
+│   ├── build_info_row.dart             # Profile info row
+│   ├── dialog_delete_account.dart      # Confirmation dialogs
+│   ├── dialog_profile.dart             # Generic profile dialogs
+│   └── otp_form_body.dart              # OTP verification form
+├── lazy_loader/          # Loading states
+│   └── reason_loader.dart              # Skeleton loading for reasons
+└── profile.mdx          # Module documentation
+```
+
+## 🎯 Fitur Utama
+
+<CardGroup cols={2}>
+  <Card title="Profile Management" icon="user-gear">
+    - View & edit profile information
+    - Photo upload dengan image picker
+    - Real-time profile updates
+    - Network image loading dengan fallbacks
+  </Card>
+  
+  <Card title="Secure Account Deletion" icon="trash">
+    - Multi-step deletion process
+    - Reason selection dengan custom input
+    - OTP verification untuk security
+    - Complete data cleanup
+  </Card>
+  
+  <Card title="Data Validation" icon="shield-check">
+    - Form validation dengan error handling
+    - OTP format validation (4 digits)
+    - Required field validation
+    - Real-time validation feedback
+  </Card>
+  
+  <Card title="User Experience" icon="sparkles">
+    - Loading states dengan skeleton UI
+    - Interactive photo viewer
+    - Confirmation dialogs
+    - Responsive design patterns
+  </Card>
+</CardGroup>
+
+---
+
+## 🎮 Controllers
+
+### ProfileController
+
+**Path:** `lib/features/profile/controllers/profile_controller.dart`
+
+Controller utama untuk manajemen profil user dengan fitur comprehensive profile management dan secure delete account flow.
+
+#### Key Features:
+- **Profile CRUD**: Fetch, update, dan display profile data
+- **Photo Management**: Image picker dengan preview dan validation
+- **Delete Account Flow**: Multi-step deletion dengan OTP verification
+- **Form Validation**: Real-time validation dengan error messaging
+
+#### Properties:
+
+<Accordion title="Reactive Variables">
+```dart
+var profile = UserProfileModel(
+  name: '', email: '', id: '', role: '', whatsapp: '',
+  statusLogin: false, lastLogin: '', photoUrl: '',
+).obs;                                    // User profile data
+
+var selectedReason = ''.obs;              // Selected deletion reason
+var isLoading = false.obs;                // General loading state
+var isDeletingAccount = false.obs;        // Delete account loading
+var currentStep = DeleteAccountStep.reason.obs; // Current deletion step
+RxString errorMessage = ''.obs;           // Validation error messages
+var email = ''.obs;                       // User email for OTP
+var imageFile = Rxn<XFile>();             // Selected image file
+
+// Text controllers for forms
+final TextEditingController reasonController = TextEditingController();
+final TextEditingController otpController = TextEditingController();
+```
+</Accordion>
+
+#### Core Methods:
+
+<Accordion title="Profile Management">
+```dart
+Future<void> fetchProfile() async {
+  isLoading.value = true;
+  await fetchApiProfile();
+  isLoading.value = false;
+}
+
+Future<void> fetchApiProfile() async {
+  try {
+    final profileService = ProfileServices();
+    final fetchedProfile = await profileService.getProfile();
+
+    if (fetchedProfile != null && fetchedProfile['data'] != null) {
+      profile.value = UserProfileModel.fromJson(fetchedProfile['data']);
+    } else {
+      print("Profile data not found or failed to fetch.");
+    }
+  } catch (e) {
+    print("Error fetching API profile: $e");
+  }
+}
+
+Future<void> updateProfile({
+  required String name,
+  required String whatsapp,
+}) async {
+  try {
+    isLoading.value = true;
+
+    final updatedData = await profileService.updateProfile(name, whatsapp);
+
+    if (updatedData != null) {
+      profile.value = updatedData;
+      Get.snackbar("Success", "Profile updated successfully");
+    }
+  } catch (e) {
+    print("Error in controller while updating profile: $e");
+  } finally {
+    isLoading.value = false;
+  }
+}
+```
+
+**Profile Features:**
+- **Auto-fetch**: Profile data di-load saat controller init
+- **Real-time Updates**: UI reactive terhadap perubahan profile
+- **Error Handling**: Graceful error management dengan user feedback
+- **Loading States**: Visual feedback selama API operations
+</Accordion>
+
+<Accordion title="Photo Management">
+```dart
+void pickPhoto(ImageSource imageSource) async {
+  try {
+    final XFile? pickedFile = await _picker.pickImage(source: imageSource);
+
+    if (pickedFile != null) {
+      imageFile.value = pickedFile;
+      update();
+
+      Get.snackbar("Success", "Gambar berhasil dipilih");
+    } else {
+      Get.snackbar("Info", "Tidak ada gambar yang dipilih");
+    }
+  } catch (e) {
+    print("Error picking image: $e");
+    Get.snackbar("Error", "Gagal mengambil gambar");
+  }
+}
+```
+
+**Photo Features:**
+- **Multi-source Picker**: Camera atau gallery selection
+- **Preview Support**: Show selected image sebelum upload
+- **Error Handling**: User-friendly error messages
+- **State Management**: Reactive updates untuk UI
+</Accordion>
+
+<Accordion title="Delete Account Flow">
+```dart
+void nextStep() {
+  if (_validateCurrentStep()) {
+    switch (currentStep.value) {
+      case DeleteAccountStep.reason:
+        currentStep.value = DeleteAccountStep.otpCode;
+        break;
+      case DeleteAccountStep.otpCode:
+        break;
+    }
+  }
+}
+
+bool _validateCurrentStep() {
+  errorMessage.value = '';
+
+  switch (currentStep.value) {
+    case DeleteAccountStep.reason:
+      if (selectedReason.value.isEmpty) {
+        errorMessage.value = 'Pilih salah satu alasan';
+        Fluttertoast.showToast(msg: errorMessage.value);
+        return false;
+      }
+      if (selectedReason.value == 'Lainnya' &&
+          reasonController.text.isEmpty) {
+        errorMessage.value = 'Tuliskan alasanmu terlebih dahulu';
+        return false;
+      }
+      break;
+
+    case DeleteAccountStep.otpCode:
+      if (otpController.text.isEmpty || !otpController.text.isNumericOnly) {
+        errorMessage.value = 'OTP tidak valid';
+        return false;
+      }
+      if (otpController.text.length != 4) {
+        errorMessage.value = 'OTP harus terdiri dari 4 angka';
+        return false;
+      }
+      break;
+  }
+  return true;
+}
+```
+
+**Delete Flow Features:**
+- **Multi-step Process**: Reason selection → OTP verification → Account deletion
+- **Step Validation**: Each step validated before proceeding
+- **Error Messaging**: Real-time validation feedback
+- **Security**: OTP verification untuk confirm deletion
+</Accordion>
+
+<Accordion title="OTP Integration">
+```dart
+Future<void> requestOTP() async {
+  isLoading.value = true;
+
+  if (email.isEmpty) {
+    print('Email tidak ada');
+    isLoading.value = false;
+    return;
+  }
+
+  await OtpService.requestOtp(email.value, "delete");
+
+  Future.delayed(const Duration(seconds: 2)).then((_) async {
+    Fluttertoast.showToast(msg: "OTP Terkirim");
+  });
+
+  isLoading.value = false;
+}
+
+Future<bool> verifyOTP() async {
+  isLoading.value = true;
+
+  try {
+    final response = await OtpService.verifyOtp(email.value, otpController.text);
+
+    if (response["message"] == "OTP valid") {
+      Get.snackbar("Sukses", "OTP berhasil diverifikasi");
+      await deleteAccount();
+      return true;
+    } else {
+      errorMessage.value = response["message"];
+      return false;
+    }
+  } catch (e) {
+    errorMessage.value = "Terjadi kesalahan, coba lagi nanti.";
+    return false;
+  } finally {
+    isLoading.value = false;
+  }
+}
+```
+
+**OTP Features:**
+- **Email-based OTP**: Send OTP ke user email
+- **Type-specific**: "delete" type untuk account deletion
+- **Verification**: Validate OTP sebelum proceed
+- **Error Handling**: User-friendly error messages
+</Accordion>
+
+---
+
+### ReasonController
+
+**Path:** `lib/features/profile/controllers/reason_controller.dart`
+
+Specialized controller untuk manajemen delete account reasons dan selection logic.
+
+<Accordion title="Reason Management">
+```dart
+class ReasonController extends GetxController {
+  final ReasonService _service = ReasonService();
+  var reasons = <ReasonModel>[].obs;
+  var isLoading = false.obs;
+  final RxString selectedOption = ''.obs;
+
+  @override
+  void onInit() {
+    super.onInit();
+    fetchReasons();
+  }
+
+  void fetchReasons() async {
+    isLoading.value = true;
+    try {
+      reasons.value = await _service.fetchReasons();
+    } catch (e) {
+      print(e.toString());
+      Get.snackbar('Error', e.toString());
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  void selectReason(String reason, ProfileController profileController) {
+    selectedOption.value = reason;
+
+    if (reason != 'Lainnya') {
+      profileController.selectedReason.value = reason;
+    } else {
+      profileController.selectedReason.value =
+          profileController.reasonController.text;
+    }
+  }
+}
+```
+
+**Reason Features:**
+- **Auto-fetch Reasons**: Load reasons dari API saat init
+- **Selection Logic**: Handle reason selection dengan custom input
+- **Cross-controller Communication**: Update ProfileController state
+- **Special Handling**: "Lainnya" option dengan custom text input
+</Accordion>
+
+---
+
+## 📊 Models & Data Structures
+
+### UserProfileModel
+
+**Path:** `lib/features/profile/models/user_profile_model.dart`
+
+<Accordion title="User Profile Data Structure">
+```dart
+class UserProfileModel {
+  final String name;
+  final String email;
+  final String id;
+  final String role;
+  final String whatsapp;
+  final bool statusLogin;
+  final String lastLogin;
+  final String photoUrl;
+
+  UserProfileModel({
+    required this.name,
+    required this.email,
+    required this.id,
+    required this.role,
+    required this.whatsapp,
+    required this.statusLogin,
+    required this.lastLogin,
+    required this.photoUrl,
+  });
+
+  factory UserProfileModel.fromJson(Map<String, dynamic> json) {
+    return UserProfileModel(
+      name: json['name'] ?? '',
+      email: json['email'] ?? '',
+      id: json['id'] ?? '',
+      role: json['role'] ?? '',
+      whatsapp: json['whatsapp'] ?? '',
+      statusLogin: json['status_login'] ?? false,
+      lastLogin: json['lastLogin'] ?? '',
+      photoUrl: (json['profile'] != null) ? json['profile']['photo'] ?? '' : '',
+    );
+  }
+}
+```
+
+**Model Features:**
+- **Complete User Data**: Comprehensive user information
+- **Null Safety**: Safe parsing dengan default values
+- **Nested Photo**: Handle nested profile photo structure
+- **Type Safety**: Proper type conversion untuk statusLogin
+</Accordion>
+
+### ReasonModel
+
+**Path:** `lib/features/profile/models/reason_model.dart`
+
+<Accordion title="Delete Account Reason Structure">
+```dart
+class ReasonModel {
+  final String reasonId;
+  final String reason;
+
+  ReasonModel({
+    required this.reasonId,
+    required this.reason,
+  });
+
+  factory ReasonModel.fromJson(Map<String, dynamic> json) {
+    return ReasonModel(
+      reasonId: json['reasonId'],
+      reason: json['reason'],
+    );
+  }
+}
+```
+
+**Reason Features:**
+- **Simple Structure**: ID dan description untuk each reason
+- **API Integration**: Direct mapping dari API response
+- **Extensible**: Easy to add new reasons dari backend
+</Accordion>
+
+---
+
+## 🔧 Services
+
+### ProfileServices
+
+**Path:** `lib/features/profile/services/profile_services.dart`
+
+Service layer untuk profile CRUD operations dengan comprehensive API management.
+
+<Accordion title="Profile API Operations">
+```dart
+Future<Map<String, dynamic>?> getProfile() async {
+  const String url = Endpoints.baseUrl2 + Endpoints.getProfileUrl;
+  String? token = await SharedPreferencesService.getToken();
+
+  if (token!.isEmpty) {
+    throw Exception('Token tidak ditemukan');
+  }
+
+  try {
+    final response = await _dio.get(
+      url,
+      options: Options(
+        headers: {
+          'token': token,
+        },
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      return response.data;
+    } else {
+      print('Gagal mengambil profil: ${response.statusCode}');
+      return null;
+    }
+  } catch (e) {
+    print('Terjadi kesalahan: $e');
+    return null;
+  }
+}
+
+Future<UserProfileModel?> updateProfile(String name, String whatsapp) async {
+  String? token = await SharedPreferencesService.getToken();
+  
+  try {
+    final data = {
+      'name': name,
+      'whatsapp': whatsapp,
+    };
+
+    Response response = await _dio.put(
+      Endpoints.baseUrl2 + Endpoints.updateProfileUrl,
+      data: data,
+      options: Options(
+        headers: {'token': token},
+        validateStatus: (status) => status != null && status < 500,
+      ),
+    );
+
+    if (response.statusCode == 200 && response.data != null) {
+      final updatedProfile = UserProfileModel.fromJson(response.data['data']);
+      return updatedProfile;
+    } else {
+      throw Exception('Failed to update profile');
+    }
+  } catch (e) {
+    print("Error: $e");
+    return null;
+  }
+}
+```
+
+**Service Features:**
+- **Token Authentication**: Secure API calls dengan JWT token
+- **Error Handling**: Comprehensive error management
+- **Type Safety**: Safe data parsing dan validation
+- **Status Validation**: Custom HTTP status validation
+</Accordion>
+
+### DeleteAccountService
+
+**Path:** `lib/features/profile/services/delete_account_services.dart`
+
+<Accordion title="Secure Account Deletion">
+```dart
+static Future<Map<String, dynamic>> deleteAccount(
+    String email, String reason) async {
+  final token = await SharedPreferencesService.getToken();
+
+  try {
+    final response = await _dio.delete(
+      '/profile/delete-account',
+      options: Options(
+        headers: {'token': token},
+      ),
+      data: {
+        "email": email,
+        "alasan": reason,
+      },
+    );
+
+    return response.data;
+  } on DioException catch (e) {
+    print('ERROR saat menghapus akun:');
+    print('Status Code: ${e.response?.statusCode}');
+    print('Response Data: ${e.response?.data}');
+
+    return {
+      "error": "Gagal menghapus akun. ${e.response?.data ?? e.message}"
+    };
+  } catch (e) {
+    return {"error": "Terjadi kesalahan tak terduga, coba lagi nanti."};
+  }
+}
+```
+
+**Delete Features:**
+- **Secure Deletion**: Token-based authentication
+- **Reason Tracking**: Store deletion reason untuk analytics
+- **Error Handling**: Detailed error logging dan user feedback
+- **Data Cleanup**: Complete account removal dari sistem
+</Accordion>
+
+### ReasonService
+
+**Path:** `lib/features/profile/services/reason_services.dart`
+
+<Accordion title="Reason Fetching">
+```dart
+Future<List<ReasonModel>> fetchReasons() async {
+  try {
+    final response = await _dio.get('/profile/reason');
+
+    if (response.statusCode == 200) {
+      final responseData = response.data;
+      
+      if (responseData is Map<String, dynamic> &&
+          responseData.containsKey('data')) {
+        List<ReasonModel> reasons = (responseData['data'] as List)
+            .map((json) => ReasonModel.fromJson(json))
+            .toList();
+        
+        // Add custom "Lainnya" option
+        reasons.add(ReasonModel(reasonId: '999', reason: 'Lainnya'));
+        
+        return reasons;
+      } else {
+        throw Exception('Invalid response format');
+      }
+    } else {
+      throw Exception('Failed to load reasons');
+    }
+  } catch (e) {
+    throw Exception('Error fetching reasons: $e');
+  }
+}
+```
+
+**Reason Features:**
+- **Dynamic Reasons**: Fetch reasons dari backend
+- **Custom Option**: Add "Lainnya" untuk custom input
+- **Error Handling**: Proper exception management
+- **Type Safety**: Validate response format
+</Accordion>
+
+---
+
+## 🎨 Views & UI Components
+
+### ProfileScreenNew
+
+**Path:** `lib/features/profile/views/profile_screen_new.dart`
+
+Main profile screen dengan interactive photo viewer dan comprehensive profile info display.
+
+<Accordion title="Profile Screen Architecture">
+```dart
+class ProfileScreenNew extends StatelessWidget {
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Stack([
+        WHeaderTitle(
+          onTapImg: () {
+            Get.dialog(
+              Material(
+                type: MaterialType.transparency,
+                child: Center(
+                  child: InteractiveViewer(
+                    panEnabled: true,
+                    scaleEnabled: true,
+                    minScale: 0.5,
+                    maxScale: 4,
+                    child: profileController.imageFile.value == null
+                        ? Image.network(profileController.profile.value.photoUrl)
+                        : Image.file(File(profileController.imageFile.value!.path)),
+                  ),
+                ),
+              ),
+            );
+          },
+          profileHeader: true,
+          backgroundImage: profileController.imageFile.value == null
+              ? NetworkImage(profileController.profile.value.photoUrl)
+              : FileImage(File(profileController.imageFile.value!.path)),
+          headerTitle: profileController.profile.value.name,
+          onPressed: () => Get.to(() => DetailEditProfileScreen(profileController: profileController)),
+          widgetChild: ProfileContent(),
+        ),
+        // Loading overlay
+        Obx(() {
+          if (profileController.isLoading.value) {
+            return Container(
+                color: Colors.black.withOpacity(0.5),
+                child: const Center(child: WEnumLoadingAnim()));
+          }
+          return const SizedBox.shrink();
+        }),
+      ]),
+    );
+  }
+}
+```
+
+**Screen Features:**
+- **Interactive Photo Viewer**: Zoomable photo dengan InteractiveViewer
+- **Header Integration**: Custom header dengan photo background
+- **Loading Overlay**: Full-screen loading dengan transparency
+- **Navigation**: Easy access ke edit profile screen
+</Accordion>
+
+### DeleteAccountScreen
+
+**Path:** `lib/features/profile/views/delete_account_screen.dart`
+
+Multi-step delete account flow dengan form validation dan OTP verification.
+
+<Accordion title="Delete Account Flow">
+```dart
+Expanded(
+  child: Obx(() {
+    switch (_controller.currentStep.value) {
+      case DeleteAccountStep.reason:
+        return Form(
+            key: formKey,
+            child: ReasonFormBody(profileController: _controller));
+      case DeleteAccountStep.otpCode:
+        return Form(
+          key: formKey,
+          child: OtpFormBody(profileController: _controller),
+        );
+    }
+  }),
+),
+
+WCustomButton(
+  onPressed: () async {
+    if (_controller.validateForm(formKey)) {
+      if (_controller.currentStep.value != DeleteAccountStep.otpCode) {
+        _controller.nextStep();
+        await _controller.requestOTP();
+      } else {
+        Get.dialog(DialogProfile(
+          dialogTitle: 'Apakah anda yakin ingin menghapus akun secara permanen?',
+          buttonTextRight: 'Hapus',
+          onPressedRight: () async {
+            Get.back();
+            await _controller.verifyOTP();
+          },
+        ));
+      }
+    }
+  },
+  buttonColor: _controller.currentStep.value == DeleteAccountStep.otpCode
+      ? const Color(0xFFD30509)
+      : _controller.selectedReason.value.isEmpty
+          ? const Color(0xFFB1B1B1)
+          : GlobalColors.mainColor,
+  buttonText: _controller.currentStep.value == DeleteAccountStep.otpCode
+      ? 'Hapus akun'
+      : 'Lanjut',
+)
+```
+
+**Delete Flow Features:**
+- **Multi-step Process**: Reason selection → OTP verification
+- **Form Validation**: Real-time validation dengan error feedback
+- **Dynamic Button**: Color dan text berubah berdasarkan step
+- **Confirmation Dialog**: Final confirmation sebelum deletion
+- **Keyboard Handling**: Animated button visibility saat keyboard muncul
+</Accordion>
+
+---
+
+## 🧩 Widgets & Components
+
+### ReasonFormBody
+
+**Path:** `lib/features/profile/widgets/reason_form_body.dart`
+
+Dynamic form untuk reason selection dengan custom input option.
+
+<Accordion title="Reason Selection UI">
+```dart
+Obx(() => Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: widget.reasonController.reasons.map((option) {
+    final isSelected = widget.reasonController.selectedOption.value == option.reason;
+
+    return GestureDetector(
+      onTap: () {
+        widget.reasonController.selectReason(option.reason, widget.profileController);
+      },
+      child: Row([
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isSelected ? GlobalColors.mainColor : Colors.transparent,
+            border: Border.all(
+              color: isSelected ? GlobalColors.mainColor : Colors.grey,
+              width: 2,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            option.reason,
+            style: GoogleFonts.lato(
+              fontSize: 14,
+              color: isSelected ? GlobalColors.mainColor : Colors.black,
+            ),
+          ),
+        ),
+      ]),
+    );
+  }).toList(),
+)),
+
+// Custom input untuk "Lainnya" option
+Obx(() {
+  if (widget.reasonController.selectedOption.value == 'Lainnya') {
+    return WTextField(
+      controller: widget.profileController.reasonController,
+      hintText: 'Tulis alasan kamu di sini',
+      maxLines: 4,
+      validator: (value) {
+        return widget.profileController.errorMessage.value.isNotEmpty
+            ? widget.profileController.errorMessage.value
+            : null;
+      },
+      onChanged: (value) {
+        widget.profileController.selectedReason.value = value;
+        widget.profileController.clearErrorMessage();
+      },
+    );
+  }
+  return const SizedBox.shrink();
+}),
+```
+
+**Reason UI Features:**
+- **Radio Button Style**: Custom circular selection indicators
+- **Dynamic Colors**: Selected state dengan color changes
+- **Conditional Input**: Show text field untuk "Lainnya" option
+- **Real-time Validation**: Error handling dengan immediate feedback
+</Accordion>
+
+### ProfileBuildInfo
+
+**Path:** `lib/features/profile/widgets/profile_build_info.dart`
+
+Reusable card component untuk profile information display.
+
+<Accordion title="Profile Info Card">
+```dart
+class ProfileBuildInfo extends StatelessWidget {
+  const ProfileBuildInfo({
+    super.key,
+    required this.children,
+    this.paddingTop = 20,
+    this.paddingBottom = 20,
+    this.paddingLeft = 20,
+    this.paddingRight = 20,
+    this.cardBackground = true,
+  });
+
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.only(
+        top: paddingTop,
+        bottom: paddingBottom,
+        left: paddingLeft,
+        right: paddingRight,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              blurRadius: 4,
+              color: const Color(0xFFB1B1B1).withOpacity(0.25),
+            ),
+          ],
+          color: Colors.white,
+          borderRadius: const BorderRadius.all(Radius.circular(15)),
+          image: cardBackground
+              ? const DecorationImage(
+                  image: AssetImage('assets/perjalanan_card.png'),
+                  alignment: Alignment.topCenter)
+              : null,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: children,
+        ),
+      ),
+    );
+  }
+}
+```
+
+**Card Features:**
+- **Flexible Padding**: Customizable padding untuk each direction
+- **Background Options**: Optional background image
+- **Shadow Effects**: Subtle drop shadow untuk depth
+- **Responsive Content**: Dynamic children dengan proper sizing
+</Accordion>
+
+---
+
+## 🔗 Integration Points
+
+### Authentication Integration
+
+<Accordion title="Token-based Security">
+```dart
+// Profile fetching dengan token
+String? token = await SharedPreferencesService.getToken();
+
+final response = await _dio.get(
+  url,
+  options: Options(
+    headers: {'token': token},
+  ),
+);
+
+// OTP integration untuk delete account
+await OtpService.requestOtp(email.value, "delete");
+final response = await OtpService.verifyOtp(email.value, otpController.text);
+```
+
+**Auth Features:**
+- **JWT Token**: Secure API calls dengan stored token
+- **Session Management**: Auto-handle token expiration
+- **OTP Integration**: Reuse OTP service untuk account deletion
+- **Logout Flow**: Clean logout dengan navigation
+</Accordion>
+
+### Navigation Integration
+
+<Accordion title="Seamless Navigation">
+```dart
+// Profile editing
+Get.to(() => DetailEditProfileScreen(profileController: profileController));
+
+// Delete account flow
+Get.to(() => const DeleteAccountScreen());
+
+// Success screen
+Get.offAll(() => const DeleteAccountSuccessScreen());
+
+// Logout flow
+await logoutController.logout();
+await Get.offAll(() => const LoginScreen());
+```
+
+**Navigation Features:**
+- **Shared Controllers**: Pass controllers antar screens
+- **Stack Management**: Proper navigation stack handling
+- **Replace Navigation**: Use offAll untuk complete flow changes
+</Accordion>
+
+---
+
+## 🚀 Usage Examples
+
+### Basic Profile Setup
+
+<Accordion title="Initialize Profile Module">
+```dart
+// Controller initialization
+final ProfileController profileController = Get.put(ProfileController());
+
+// Auto-fetch profile on init
+@override
+void onInit() {
+  super.onInit();
+  fetchProfile();
+  loadEmail();
+}
+```
+</Accordion>
+
+### Photo Upload Flow
+
+<Accordion title="Photo Selection & Upload">
+```dart
+// Show photo picker modal
+Get.bottomSheet(
+  BottomModalProfile(
+    onCameraTap: () {
+      profileController.pickPhoto(ImageSource.camera);
+      Get.back();
+    },
+    onGalleryTap: () {
+      profileController.pickPhoto(ImageSource.gallery);
+      Get.back();
+    },
+  ),
+);
+
+// Display selected photo
+Widget build(BuildContext context) {
+  return Obx(() => 
+    profileController.imageFile.value == null
+      ? Image.network(profileController.profile.value.photoUrl)
+      : Image.file(File(profileController.imageFile.value!.path))
+  );
+}
+```
+</Accordion>
+
+### Delete Account Implementation
+
+<Accordion title="Complete Delete Flow">
+```dart
+// Step 1: Show reason selection
+Get.to(() => const DeleteAccountScreen());
+
+// Step 2: Validate reason & request OTP
+if (_controller.validateForm(formKey)) {
+  _controller.nextStep();
+  await _controller.requestOTP();
+}
+
+// Step 3: Verify OTP & delete account
+final success = await _controller.verifyOTP();
+if (success) {
+  await _controller.deleteAccount();
+  Get.offAll(() => const DeleteAccountSuccessScreen());
+}
+```
+</Accordion>
+
+---
+
+## ⚙️ Configuration & Setup
+
+### Dependencies
+
+<Accordion title="Required Packages">
+```yaml
+dependencies:
+  # State management
+  get: ^4.6.5                    # GetX untuk reactive state
+  
+  # HTTP & API
+  dio: ^5.3.2                    # HTTP client untuk API calls
+  
+  # Image handling
+  image_picker: ^1.0.4          # Photo selection dari camera/gallery
+  
+  # UI feedback
+  fluttertoast: ^8.2.2          # Toast notifications
+  
+  # Typography
+  google_fonts: ^5.1.0          # Font consistency
+  
+  # Local storage
+  shared_preferences: ^2.2.0     # Token dan data persistence
+  
+  # Core dependencies
+  maqdis_connect/features/auth   # Authentication integration
+  maqdis_connect/core/common     # Shared widgets dan utilities
+```
+</Accordion>
+
+### API Endpoints
+
+<Accordion title="Profile API Configuration">
+```dart
+class Endpoints {
+  static const String baseUrl2 = 'https://api.maqdisconnect.com';
+  
+  // Profile endpoints
+  static const String getProfileUrl = '/api/profile';
+  static const String updateProfileUrl = '/api/profile';
+  static const String deleteAccountUrl = '/api/profile/delete-account';
+  
+  // Reason management
+  static const String reasonUrl = '/api/profile/reason';
+  
+  // Integration endpoints
+  static const String otpUrl = '/api/otp';  // From auth module
+}
+```
+</Accordion>
+
+---
+
+## 🔒 Security & Performance
+
+### Security Measures
+
+<Accordion title="Data Protection">
+- **Token Authentication**: All API calls secured dengan JWT tokens
+- **OTP Verification**: Email-based OTP untuk sensitive operations
+- **Input Validation**: Sanitize semua user inputs
+- **Session Management**: Auto-logout saat token expired
+- **Secure Deletion**: Complete data cleanup dengan audit trail
+</Accordion>
+
+### Performance Optimization
+
+<Accordion title="Optimization Strategies">
+- **Lazy Loading**: Controllers di-create saat needed
+- **Image Caching**: Network images cached untuk performance
+- **Form Validation**: Real-time validation tanpa blocking UI
+- **Memory Management**: Proper disposal untuk controllers dan resources
+- **Efficient Updates**: Only update UI components yang berubah
+</Accordion>
+
+---
+
+## 📋 Error Handling
+
+### Common Error Scenarios
+
+<Accordion title="Error Management">
+```dart
+// Network errors
+try {
+  final response = await profileService.getProfile();
+  // Process response...
+} catch (e) {
+  print("Error fetching API profile: $e");
+  Get.snackbar("Error", "Gagal memuat profil");
+}
+
+// Validation errors
+bool _validateCurrentStep() {
+  errorMessage.value = '';
+
+  switch (currentStep.value) {
+    case DeleteAccountStep.reason:
+      if (selectedReason.value.isEmpty) {
+        errorMessage.value = 'Pilih salah satu alasan';
+        return false;
+      }
+      break;
+  }
+  return true;
+}
+
+// OTP errors
+if (response["message"] == "OTP valid") {
+  // Success
+} else {
+  errorMessage.value = response["message"];
+  return false;
+}
+```
+
+**Error Strategies:**
+- **User-friendly Messages**: Convert technical errors ke readable messages
+- **Real-time Feedback**: Immediate validation feedback
+- **Graceful Degradation**: App tetap functional meski ada errors
+- **Retry Mechanisms**: Allow users untuk retry failed operations
+</Accordion>
+
+---
+
+## 🔗 Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Authentication System" href="/features/auth" icon="shield">
+    User login, registration, OTP verification, dan logout flow
+  </Card>
+  
+  <Card title="Core Widgets" href="/core/widgets" icon="puzzle-piece">
+    Shared UI components, forms, dan reusable widgets
+  </Card>
+  
+  <Card title="Home Navigation" href="/features/beranda" icon="home">
+    Main navigation dan bottom navigation integration
+  </Card>
+  
+  <Card title="API Documentation" href="/api/profile" icon="code">
+    Backend API specifications untuk profile operations
+  </Card>
+</CardGroup>
+
+---
+
+<Info>
+**Note:** Profile module menyediakan complete user management dengan security-first approach. Delete account flow menggunakan multi-step verification untuk ensure user safety dan data compliance.
+</Info>
